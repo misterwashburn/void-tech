@@ -1,0 +1,14 @@
+build:
+  name: iOS Simulator
+  steps:
+    - eas/checkout
+    - eas/install_node_modules
+    - eas/prebuild
+    - run:
+        name: Install CocoaPods 1.15.2 and install pods
+        working_directory: ios
+        command: |
+          gem install cocoapods -v 1.15.2 --no-document
+          pod install
+    - eas/run_fastlane
+    - eas/upload_artifact
