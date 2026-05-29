@@ -23,4 +23,5 @@ build:
             CODE_SIGNING_ALLOWED=NO \
             build
     - eas/upload_artifact:
-        path: ios/build/Build/Products/Debug-iphonesimulator/VoidTechLogistics.app
+        with:
+          path: ios/build/Build/Products/Debug-iphonesimulator/VoidTechLogistics.app
