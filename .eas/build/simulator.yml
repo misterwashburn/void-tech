@@ -22,6 +22,6 @@ build:
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             build
-    - eas/upload_artifact:
-        with:
-          path: ios/build/Build/Products/Debug-iphonesimulator/VoidTechLogistics.app
+    - uses: eas/upload_artifact
+      with:
+        path: ios/build/Build/Products/Debug-iphonesimulator/VoidTechLogistics.app
