@@ -1,6 +1,7 @@
 {
   "cli": {
-    "version": ">= 10.0.0"
+    "version": ">= 10.0.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -10,18 +11,15 @@
     "simulator": {
       "developmentClient": true,
       "distribution": "internal",
-      "image": "macos-ventura-13.6-xcode-15.2",
       "ios": {
         "simulator": true
       }
     },
     "preview": {
-      "distribution": "internal",
-      "image": "macos-ventura-13.6-xcode-15.2"
+      "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true,
-      "image": "macos-ventura-13.6-xcode-15.2"
+      "autoIncrement": true
     }
   },
   "submit": {
