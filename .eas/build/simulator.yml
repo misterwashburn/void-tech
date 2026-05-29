@@ -11,4 +11,3 @@ build:
           gem install cocoapods -v 1.15.2 --no-document
           pod install
     - eas/run_fastlane
-    - eas/upload_artifact
