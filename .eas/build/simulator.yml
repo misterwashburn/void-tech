@@ -5,9 +5,9 @@ build:
     - eas/install_node_modules
     - eas/prebuild
     - run:
-        name: Install CocoaPods 1.15.2 and install pods
+        name: Patch Podfile and install pods
         working_directory: ios
         command: |
-          gem install cocoapods -v 1.15.2 --no-document
-          pod _1.15.2_ install
+          sed -i '' '/:privacy_file_aggregation_enabled/d' Podfile
+          pod install
     - eas/run_fastlane
