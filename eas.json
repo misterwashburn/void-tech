@@ -10,15 +10,18 @@
     "simulator": {
       "developmentClient": true,
       "distribution": "internal",
+      "image": "macos-ventura-13.6-xcode-15.2",
       "ios": {
         "simulator": true
       }
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "image": "macos-ventura-13.6-xcode-15.2"
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "image": "macos-ventura-13.6-xcode-15.2"
     }
   },
   "submit": {
