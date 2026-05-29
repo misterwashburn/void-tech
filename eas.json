@@ -9,7 +9,7 @@
       "distribution": "internal"
     },
     "simulator": {
-      "config": ".eas/build/simulator.yml",
+      "config": "simulator.yml",
       "developmentClient": true,
       "distribution": "internal",
       "ios": {
