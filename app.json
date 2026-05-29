@@ -14,8 +14,7 @@
       }
     },
     "android": {
-      "package": "com.voidtech.logistics",
-      "minSdkVersion": 24
+      "package": "com.voidtech.logistics"
     },
     "plugins": [
       "expo-router",
@@ -25,6 +24,9 @@
           "ios": {
             "deploymentTarget": "15.1",
             "useFrameworks": "static"
+          },
+          "android": {
+            "minSdkVersion": 24
           }
         }
       ]

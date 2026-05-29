@@ -9,7 +9,6 @@
       "distribution": "internal"
     },
     "simulator": {
-      "config": "simulator.yml",
       "developmentClient": true,
       "distribution": "internal",
       "ios": {

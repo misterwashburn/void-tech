@@ -94,6 +94,8 @@ export default function GridCanvas({ onTapCell, onTapNode }: GridCanvasProps) {
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
   const scale = useSharedValue(1.0);
+  const panStartX = useSharedValue(0);
+  const panStartY = useSharedValue(0);
 
   // Pulsing opacity for stalled nodes
   const stalledPulse = useSharedValue(1.0);
@@ -103,9 +105,13 @@ export default function GridCanvas({ onTapCell, onTapNode }: GridCanvasProps) {
 
   // Pan gesture
   const panGesture = Gesture.Pan()
+    .onBegin(() => {
+      panStartX.value = translateX.value;
+      panStartY.value = translateY.value;
+    })
     .onUpdate((e) => {
-      translateX.value += e.changeX;
-      translateY.value += e.changeY;
+      translateX.value = panStartX.value + e.translationX;
+      translateY.value = panStartY.value + e.translationY;
     });
 
   // Pinch gesture
