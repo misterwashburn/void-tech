@@ -8,7 +8,10 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.voidtech.logistics"
+      "bundleIdentifier": "com.voidtech.logistics",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.voidtech.logistics",
