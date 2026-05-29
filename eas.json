@@ -11,18 +11,15 @@
     "simulator": {
       "developmentClient": true,
       "distribution": "internal",
-      "resourceClass": "m-medium",
       "ios": {
         "simulator": true
       }
     },
     "preview": {
-      "distribution": "internal",
-      "resourceClass": "m-medium"
+      "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true,
-      "resourceClass": "m-medium"
+      "autoIncrement": true
     }
   },
   "submit": {
