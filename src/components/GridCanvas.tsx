@@ -20,7 +20,13 @@ import {
   useDerivedValue as useReanimatedDerivedValue,
 } from 'react-native-reanimated';
 import { useFactoryStore } from '../store/useFactoryStore';
+import { useUIStore } from '../store/useUIStore';
 import { FactoryNode } from '../types';
+
+interface GridCanvasProps {
+  onTapCell: (gridX: number, gridY: number) => void;
+  onTapNode: (nodeId: string) => void;
+}
 
 const GRID_CELL_SIZE = 80;
 const NODE_SIZE = 64;
@@ -71,10 +77,12 @@ function getNodeCode(type: FactoryNode['type']): string {
   }
 }
 
-export default function GridCanvas() {
+export default function GridCanvas({ onTapCell, onTapNode }: GridCanvasProps) {
   const { getNodesMap, getEdgesMap } = useFactoryStore();
   const nodes = getNodesMap();
   const edges = getEdgesMap();
+  const selectedNodeId = useUIStore((s) => s.selectedNodeId);
+  const connectingFromId = useUIStore((s) => s.connectingFromId);
 
   // Pan and zoom shared values
   const translateX = useSharedValue(0);
@@ -102,7 +110,26 @@ export default function GridCanvas() {
       scale.value = Math.min(MAX_SCALE, Math.max(MIN_SCALE, newScale));
     });
 
-  const composed = Gesture.Simultaneous(panGesture, pinchGesture);
+  const tapGesture = Gesture.Tap()
+    .runOnJS(true)
+    .onEnd((e) => {
+      const worldX = (e.x - translateX.value) / scale.value;
+      const worldY = (e.y - translateY.value) / scale.value;
+      const gridX = Math.floor(worldX / GRID_CELL_SIZE);
+      const gridY = Math.floor(worldY / GRID_CELL_SIZE);
+
+      const tappedNode = Array.from(nodes.values()).find(
+        (n) => n.gridX === gridX && n.gridY === gridY
+      );
+
+      if (tappedNode) {
+        onTapNode(tappedNode.id);
+      } else {
+        onTapCell(gridX, gridY);
+      }
+    });
+
+  const composed = Gesture.Simultaneous(panGesture, pinchGesture, tapGesture);
 
   // Derived transform for Skia Group
   const transform = useReanimatedDerivedValue(() => [
@@ -178,8 +205,24 @@ export default function GridCanvas() {
               const code = getNodeCode(node.type);
               const isStalled = node.operationalStatus === 'STALLED';
 
+              const isSelected = node.id === selectedNodeId;
+              const isConnectSource = node.id === connectingFromId;
+
               return (
                 <Group key={node.id} opacity={isStalled ? stalledOpacity : 1}>
+                  {/* Selection / connect-source glow */}
+                  {(isSelected || isConnectSource) && (
+                    <RoundedRect
+                      x={x - 4}
+                      y={y - 4}
+                      width={NODE_SIZE + 8}
+                      height={NODE_SIZE + 8}
+                      r={11}
+                      color={isConnectSource ? '#FFD700' : 'rgba(255,255,255,0.3)'}
+                      style="stroke"
+                      strokeWidth={3}
+                    />
+                  )}
                   {/* Fill */}
                   <RoundedRect
                     x={x}
