@@ -10,4 +10,17 @@ build:
         command: |
           sed -i '' '/:privacy_file_aggregation_enabled/d' Podfile
           pod install
-    - eas/run_fastlane
+    - run:
+        name: Build for iOS Simulator
+        working_directory: ios
+        command: |
+          xcodebuild \
+            -workspace VoidTechLogistics.xcworkspace \
+            -scheme VoidTechLogistics \
+            -sdk iphonesimulator \
+            -configuration Debug \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+    - eas/upload_artifact:
+        path: ios/build/Build/Products/Debug-iphonesimulator/VoidTechLogistics.app
