@@ -9,5 +9,5 @@ build:
         working_directory: ios
         command: |
           gem install cocoapods -v 1.15.2 --no-document
-          pod install
+          pod _1.15.2_ install
     - eas/run_fastlane
