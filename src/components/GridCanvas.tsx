@@ -1,15 +1,13 @@
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { useEffect } from 'react';
+import { Platform, StyleSheet, View } from 'react-native';
 import {
   Canvas,
   Circle,
   Group,
   Line,
+  matchFont,
   RoundedRect,
   Text,
-  useFont,
-  useDerivedValue,
-  useValue,
 } from '@shopify/react-native-skia';
 import {
   Gesture,
@@ -18,7 +16,15 @@ import {
 import {
   useSharedValue,
   useDerivedValue as useReanimatedDerivedValue,
+  withRepeat,
+  withTiming,
 } from 'react-native-reanimated';
+
+const labelFont = matchFont({
+  fontFamily: Platform.select({ ios: 'Helvetica Neue', default: 'sans-serif' }),
+  fontSize: 13,
+  fontWeight: '700',
+});
 import { useFactoryStore } from '../store/useFactoryStore';
 import { useUIStore } from '../store/useUIStore';
 import { FactoryNode } from '../types';
@@ -89,8 +95,11 @@ export default function GridCanvas({ onTapCell, onTapNode }: GridCanvasProps) {
   const translateY = useSharedValue(0);
   const scale = useSharedValue(1.0);
 
-  // For pulsing stalled nodes
-  const time = useValue(0);
+  // Pulsing opacity for stalled nodes
+  const stalledPulse = useSharedValue(1.0);
+  useEffect(() => {
+    stalledPulse.value = withRepeat(withTiming(0.35, { duration: 700 }), -1, true);
+  }, []);
 
   // Pan gesture
   const panGesture = Gesture.Pan()
@@ -137,11 +146,6 @@ export default function GridCanvas({ onTapCell, onTapNode }: GridCanvasProps) {
     { translateY: translateY.value },
     { scale: scale.value },
   ]);
-
-  // Pulsing opacity for stalled nodes (0.4 to 1.0)
-  const stalledOpacity = useDerivedValue(() => {
-    return 0.7 + 0.3 * Math.sin(time.current * 4);
-  }, [time]);
 
   const nodeList = Array.from(nodes.values());
   const edgeList = Array.from(edges.values());
@@ -209,7 +213,7 @@ export default function GridCanvas({ onTapCell, onTapNode }: GridCanvasProps) {
               const isConnectSource = node.id === connectingFromId;
 
               return (
-                <Group key={node.id} opacity={isStalled ? stalledOpacity : 1}>
+                <Group key={node.id} opacity={isStalled ? stalledPulse : 1}>
                   {/* Selection / connect-source glow */}
                   {(isSelected || isConnectSource) && (
                     <RoundedRect
@@ -244,13 +248,15 @@ export default function GridCanvas({ onTapCell, onTapNode }: GridCanvasProps) {
                     strokeWidth={2}
                   />
                   {/* Label */}
-                  <Text
-                    x={x + NODE_SIZE / 2 - 14}
-                    y={y + NODE_SIZE / 2 + 5}
-                    text={code}
-                    color="white"
-                    font={null}
-                  />
+                  {labelFont && (
+                    <Text
+                      x={x + NODE_SIZE / 2 - 14}
+                      y={y + NODE_SIZE / 2 + 5}
+                      text={code}
+                      color="white"
+                      font={labelFont}
+                    />
+                  )}
                 </Group>
               );
             })}
