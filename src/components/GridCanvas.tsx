@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import {
   Canvas,
@@ -13,21 +13,21 @@ import {
   Gesture,
   GestureDetector,
 } from 'react-native-gesture-handler';
-import {
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
   useSharedValue,
-  useDerivedValue as useReanimatedDerivedValue,
-  withRepeat,
-  withTiming,
 } from 'react-native-reanimated';
+
+import { useFactoryStore } from '../store/useFactoryStore';
+import { useUIStore } from '../store/useUIStore';
+import { FactoryNode } from '../types';
 
 const labelFont = matchFont({
   fontFamily: Platform.select({ ios: 'Helvetica Neue', default: 'sans-serif' }),
   fontSize: 13,
   fontWeight: '700',
 });
-import { useFactoryStore } from '../store/useFactoryStore';
-import { useUIStore } from '../store/useUIStore';
-import { FactoryNode } from '../types';
 
 interface GridCanvasProps {
   onTapCell: (gridX: number, gridY: number) => void;
@@ -97,11 +97,22 @@ export default function GridCanvas({ onTapCell, onTapNode }: GridCanvasProps) {
   const panStartX = useSharedValue(0);
   const panStartY = useSharedValue(0);
 
-  // Pulsing opacity for stalled nodes
-  const stalledPulse = useSharedValue(1.0);
+  // Keep Skia props on the JS side only; driving Skia props with Reanimated
+  // shared values can cause Reanimated to try to execute non-worklet Skia helpers
+  // on the UI thread in this Expo/Reanimated/Skia version combination.
+  const [stalledPulse, setStalledPulse] = useState(1.0);
   useEffect(() => {
-    stalledPulse.value = withRepeat(withTiming(0.35, { duration: 700 }), -1, true);
+    let dimmed = false;
+    const intervalId = setInterval(() => {
+      dimmed = !dimmed;
+      setStalledPulse(dimmed ? 0.35 : 1.0);
+    }, 700);
+
+    return () => clearInterval(intervalId);
   }, []);
+
+  const nodeList = Array.from(nodes.values());
+  const edgeList = Array.from(edges.values());
 
   // Pan gesture
   const panGesture = Gesture.Pan()
@@ -125,15 +136,9 @@ export default function GridCanvas({ onTapCell, onTapNode }: GridCanvasProps) {
       scale.value = Math.min(MAX_SCALE, Math.max(MIN_SCALE, newScale));
     });
 
-  const tapGesture = Gesture.Tap()
-    .runOnJS(true)
-    .onEnd((e) => {
-      const worldX = (e.x - translateX.value) / scale.value;
-      const worldY = (e.y - translateY.value) / scale.value;
-      const gridX = Math.floor(worldX / GRID_CELL_SIZE);
-      const gridY = Math.floor(worldY / GRID_CELL_SIZE);
-
-      const tappedNode = Array.from(nodes.values()).find(
+  const handleGridTap = useCallback(
+    (gridX: number, gridY: number) => {
+      const tappedNode = nodeList.find(
         (n) => n.gridX === gridX && n.gridY === gridY
       );
 
@@ -142,19 +147,29 @@ export default function GridCanvas({ onTapCell, onTapNode }: GridCanvasProps) {
       } else {
         onTapCell(gridX, gridY);
       }
+    },
+    [nodeList, onTapCell, onTapNode]
+  );
+
+  const tapGesture = Gesture.Tap()
+    .onEnd((e) => {
+      const worldX = (e.x - translateX.value) / scale.value;
+      const worldY = (e.y - translateY.value) / scale.value;
+      const gridX = Math.floor(worldX / GRID_CELL_SIZE);
+      const gridY = Math.floor(worldY / GRID_CELL_SIZE);
+
+      runOnJS(handleGridTap)(gridX, gridY);
     });
 
   const composed = Gesture.Simultaneous(panGesture, pinchGesture, tapGesture);
 
-  // Derived transform for Skia Group
-  const transform = useReanimatedDerivedValue(() => [
-    { translateX: translateX.value },
-    { translateY: translateY.value },
-    { scale: scale.value },
-  ]);
-
-  const nodeList = Array.from(nodes.values());
-  const edgeList = Array.from(edges.values());
+  const canvasAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+      { scale: scale.value },
+    ],
+  }));
 
   // Precompute node center positions
   const nodeCenters = new Map<string, { cx: number; cy: number }>();
@@ -168,18 +183,21 @@ export default function GridCanvas({ onTapCell, onTapNode }: GridCanvasProps) {
   }
 
   // Dot matrix: compute dot positions
-  const dotPositions: Array<{ x: number; y: number }> = [];
-  for (let x = 0; x <= CANVAS_WIDTH; x += DOT_SPACING) {
-    for (let y = 0; y <= CANVAS_HEIGHT; y += DOT_SPACING) {
-      dotPositions.push({ x, y });
+  const dotPositions = useMemo(() => {
+    const positions: Array<{ x: number; y: number }> = [];
+    for (let x = 0; x <= CANVAS_WIDTH; x += DOT_SPACING) {
+      for (let y = 0; y <= CANVAS_HEIGHT; y += DOT_SPACING) {
+        positions.push({ x, y });
+      }
     }
-  }
+    return positions;
+  }, []);
 
   return (
     <GestureDetector gesture={composed}>
       <View style={styles.container}>
-        <Canvas style={styles.canvas}>
-          <Group transform={transform}>
+        <Animated.View style={[styles.canvasTransform, canvasAnimatedStyle]}>
+          <Canvas style={styles.canvas}>
             {/* Dot matrix background */}
             {dotPositions.map((dot, i) => (
               <Circle
@@ -266,8 +284,8 @@ export default function GridCanvas({ onTapCell, onTapNode }: GridCanvasProps) {
                 </Group>
               );
             })}
-          </Group>
-        </Canvas>
+          </Canvas>
+        </Animated.View>
       </View>
     </GestureDetector>
   );
@@ -278,7 +296,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0D1117',
   },
+  canvasTransform: {
+    height: CANVAS_HEIGHT,
+    position: 'absolute',
+    transformOrigin: '0px 0px',
+    width: CANVAS_WIDTH,
+  },
   canvas: {
-    flex: 1,
+    height: CANVAS_HEIGHT,
+    width: CANVAS_WIDTH,
   },
 });
