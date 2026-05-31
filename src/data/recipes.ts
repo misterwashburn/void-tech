@@ -3,11 +3,13 @@ import { Recipe } from '../types';
 export const RECIPES: Record<string, Recipe> = {
   // Tier 1
   smelt_plasteel: {
+    nodeType: 'REFINER',
     inputs:  [{ materialId: 'void_ore',      ratePerSecond: 5 }],
     outputs: [{ materialId: 'plasteel',      ratePerSecond: 3 }],
     energyCost: 8,
   },
   refine_polymer: {
+    nodeType: 'REFINER',
     inputs:  [{ materialId: 'hydrocarbon',   ratePerSecond: 4 }],
     outputs: [{ materialId: 'polymer_sheet', ratePerSecond: 4 }],
     energyCost: 6,
@@ -15,6 +17,7 @@ export const RECIPES: Record<string, Recipe> = {
 
   // Tier 2
   assemble_logic_substrate: {
+    nodeType: 'ASSEMBLER',
     inputs:  [
       { materialId: 'plasteel',      ratePerSecond: 3 },
       { materialId: 'polymer_sheet', ratePerSecond: 3 },
@@ -23,6 +26,7 @@ export const RECIPES: Record<string, Recipe> = {
     energyCost: 15,
   },
   forge_charged_alloy: {
+    nodeType: 'REFINER',
     inputs:  [
       { materialId: 'void_ore',  ratePerSecond: 4 },
       { materialId: 'catalyst',  ratePerSecond: 2 },
@@ -33,6 +37,7 @@ export const RECIPES: Record<string, Recipe> = {
 
   // Tier 3
   synthesize_quantum_cpu: {
+    nodeType: 'ASSEMBLER',
     inputs:  [
       { materialId: 'logic_substrate', ratePerSecond: 2 },
       { materialId: 'plasma',          ratePerSecond: 3 },
@@ -41,6 +46,7 @@ export const RECIPES: Record<string, Recipe> = {
     energyCost: 25,
   },
   extract_chronal_fluid: {
+    nodeType: 'REFINER',
     inputs:  [{ materialId: 'raw_exotic',    ratePerSecond: 3 }],
     outputs: [{ materialId: 'chronal_fluid', ratePerSecond: 2 }],
     energyCost: 18,
@@ -48,6 +54,7 @@ export const RECIPES: Record<string, Recipe> = {
 
   // Tier 4
   forge_tachyon_core: {
+    nodeType: 'ASSEMBLER',
     inputs:  [
       { materialId: 'chronal_fluid',  ratePerSecond: 2 },
       { materialId: 'charged_alloy',  ratePerSecond: 2 },
@@ -56,6 +63,7 @@ export const RECIPES: Record<string, Recipe> = {
     energyCost: 30,
   },
   process_flux_filament: {
+    nodeType: 'REFINER',
     inputs:  [{ materialId: 'probability_ore', ratePerSecond: 4 }],
     outputs: [{
       materialId: 'flux_filament',
@@ -67,6 +75,7 @@ export const RECIPES: Record<string, Recipe> = {
 
   // Tier 5
   build_singularity_driver: {
+    nodeType: 'ASSEMBLER',
     inputs:  [
       { materialId: 'tachyon_core',  ratePerSecond: 1 },
       { materialId: 'flux_filament', ratePerSecond: 2 },
@@ -79,3 +88,13 @@ export const RECIPES: Record<string, Recipe> = {
 export const RECIPES_BY_OUTPUT: Record<string, string> = Object.fromEntries(
   Object.entries(RECIPES).map(([id, r]) => [r.outputs[0].materialId, id])
 );
+
+export const RECIPE_IDS_BY_NODE_TYPE = Object.entries(RECIPES).reduce((acc, [id, recipe]) => {
+  if (!recipe.nodeType) {
+    return acc;
+  }
+
+  const existing = acc[recipe.nodeType] ?? [];
+  acc[recipe.nodeType] = [...existing, id];
+  return acc;
+}, {} as Partial<Record<NonNullable<Recipe['nodeType']>, string[]>>);

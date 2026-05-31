@@ -5,12 +5,12 @@ interface UIState {
   placementNodeType: NodeType | null;
   selectedNodeId: string | null;
   connectingFromId: string | null;
-  activeTab: 'PALETTE' | 'LEDGER';
+  activeTab: 'PALETTE' | 'LEDGER' | 'MISSIONS';
 
   setPlacementNodeType: (type: NodeType | null) => void;
   setSelectedNodeId: (id: string | null) => void;
   setConnectingFromId: (id: string | null) => void;
-  setActiveTab: (tab: 'PALETTE' | 'LEDGER') => void;
+  setActiveTab: (tab: 'PALETTE' | 'LEDGER' | 'MISSIONS') => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
