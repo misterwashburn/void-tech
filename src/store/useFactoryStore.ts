@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { FactoryEdge, FactoryNode, NodeType, PowerTier, ResourceEdge, TickResult } from '../types';
+import { ConnectionPortId, FactoryEdge, FactoryNode, NodeType, PowerTier, ResourceEdge, TickResult } from '../types';
 import { wouldCreateCycle } from '../engine/graphUtils';
 import { getCurrentMission, getUnlockedProgression } from '../data/missions';
 
@@ -19,12 +19,16 @@ interface FactoryStoreState {
     sourceNodeId: string,
     targetNodeId: string,
     materialId: string,
-    maxCapacityRate: number
+    maxCapacityRate: number,
+    sourcePortId?: ConnectionPortId,
+    targetPortId?: ConnectionPortId
   ) => { success: boolean; error?: string };
   connectPower: (
     sourceNodeId: string,
     targetNodeId: string,
-    maxTransferRate: number
+    maxTransferRate: number,
+    sourcePortId?: ConnectionPortId,
+    targetPortId?: ConnectionPortId
   ) => { success: boolean; error?: string };
   applyTickResult: (result: TickResult, tickSeconds?: number) => void;
 
@@ -115,7 +119,9 @@ export const useFactoryStore = create<FactoryStoreState>((set, get) => ({
     sourceNodeId: string,
     targetNodeId: string,
     materialId: string,
-    maxCapacityRate: number
+    maxCapacityRate: number,
+    sourcePortId?: ConnectionPortId,
+    targetPortId?: ConnectionPortId
   ): { success: boolean; error?: string } {
     const state = get();
     const nodesMap = recordToMap(state.nodes);
@@ -140,6 +146,8 @@ export const useFactoryStore = create<FactoryStoreState>((set, get) => ({
       id: edgeId,
       sourceNodeId,
       targetNodeId,
+      sourcePortId,
+      targetPortId,
       connectionType: 'RESOURCE',
       materialId,
       maxCapacityRate,
@@ -156,7 +164,9 @@ export const useFactoryStore = create<FactoryStoreState>((set, get) => ({
   connectPower(
     sourceNodeId: string,
     targetNodeId: string,
-    maxTransferRate: number
+    maxTransferRate: number,
+    sourcePortId?: ConnectionPortId,
+    targetPortId?: ConnectionPortId
   ): { success: boolean; error?: string } {
     const state = get();
     const sourceNode = state.nodes[sourceNodeId];
@@ -183,6 +193,8 @@ export const useFactoryStore = create<FactoryStoreState>((set, get) => ({
           id: edgeId,
           sourceNodeId,
           targetNodeId,
+          sourcePortId,
+          targetPortId,
           connectionType: 'POWER',
           maxTransferRate,
           currentTransferRate: 0,

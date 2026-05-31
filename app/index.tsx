@@ -6,7 +6,7 @@ import { useGameLoop } from '../src/hooks/useGameLoop';
 import GridCanvas from '../src/components/GridCanvas';
 import ControlStrip from '../src/components/ControlStrip';
 import DockLedger from '../src/components/DockLedger';
-import { FactoryNode, NodeType, PowerTier, Recipe } from '../src/types';
+import { ConnectionPortId, FactoryNode, NodeType, PowerTier, Recipe } from '../src/types';
 import { MATERIALS } from '../src/data/materials';
 import { RECIPES, RECIPE_IDS_BY_NODE_TYPE } from '../src/data/recipes';
 import { getDefaultPowerRequirement, getPowerTierDefinition } from '../src/data/power';
@@ -21,7 +21,6 @@ export default function GameScreen() {
   const getUnlockedRecipeIds = useFactoryStore((s) => s.getUnlockedRecipeIds);
   const getUnlockedPowerTiers = useFactoryStore((s) => s.getUnlockedPowerTiers);
 
-  const placementNodeType = useUIStore((s) => s.placementNodeType);
   const setPlacementNodeType = useUIStore((s) => s.setPlacementNodeType);
   const selectedNodeId = useUIStore((s) => s.selectedNodeId);
   const setSelectedNodeId = useUIStore((s) => s.setSelectedNodeId);
@@ -32,8 +31,8 @@ export default function GameScreen() {
 
   function buildNode(
     nodeType: NodeType,
-    gridX: number,
-    gridY: number,
+    worldX: number,
+    worldY: number,
     recipeId?: string,
     powerTier?: PowerTier
   ): FactoryNode {
@@ -47,8 +46,10 @@ export default function GameScreen() {
       id: `node_${Date.now()}_${Math.random().toString(36).slice(2)}`,
       name: powerDefinition?.name ?? (recipeOutputName ? `${nodeType}: ${recipeOutputName}` : nodeType),
       type: nodeType,
-      gridX,
-      gridY,
+      gridX: Math.floor(worldX / 80),
+      gridY: Math.floor(worldY / 80),
+      x: worldX,
+      y: worldY,
       inputBuffers: {},
       outputBuffers: {},
       productionRecipe: recipe,
@@ -63,8 +64,8 @@ export default function GameScreen() {
     };
   }
 
-  function placeNode(nodeType: NodeType, gridX: number, gridY: number, recipeId?: string, powerTier?: PowerTier) {
-    addNode(buildNode(nodeType, gridX, gridY, recipeId, powerTier));
+  function placeNode(nodeType: NodeType, worldX: number, worldY: number, recipeId?: string, powerTier?: PowerTier) {
+    addNode(buildNode(nodeType, worldX, worldY, recipeId, powerTier));
     setPlacementNodeType(null);
   }
 
@@ -77,13 +78,11 @@ export default function GameScreen() {
       .map((recipeId) => ({ id: recipeId, recipe: RECIPES[recipeId] }));
   }
 
-  function handleTapCell(gridX: number, gridY: number) {
-    if (!placementNodeType) return;
-
-    if (placementNodeType === 'POWER_GENERATOR') {
+  function handlePlaceNode(nodeType: NodeType, worldX: number, worldY: number) {
+    if (nodeType === 'POWER_GENERATOR') {
       const powerTierOptions = getUnlockedPowerTiers();
       if (powerTierOptions.length === 1) {
-        placeNode(placementNodeType, gridX, gridY, undefined, powerTierOptions[0]);
+        placeNode(nodeType, worldX, worldY, undefined, powerTierOptions[0]);
         return;
       }
 
@@ -95,7 +94,7 @@ export default function GameScreen() {
             const definition = getPowerTierDefinition(tier);
             return {
               text: `T${tier} ${definition.name}`,
-              onPress: () => placeNode(placementNodeType, gridX, gridY, undefined, tier),
+              onPress: () => placeNode(nodeType, worldX, worldY, undefined, tier),
             };
           }),
           { text: 'Cancel', style: 'cancel' as const },
@@ -104,27 +103,27 @@ export default function GameScreen() {
       return;
     }
 
-    const recipeOptions = getUnlockedRecipeOptions(placementNodeType);
+    const recipeOptions = getUnlockedRecipeOptions(nodeType);
     if (recipeOptions.length === 0) {
-      placeNode(placementNodeType, gridX, gridY);
+      placeNode(nodeType, worldX, worldY);
       return;
     }
 
     if (recipeOptions.length === 1) {
-      placeNode(placementNodeType, gridX, gridY, recipeOptions[0].id);
+      placeNode(nodeType, worldX, worldY, recipeOptions[0].id);
       return;
     }
 
     Alert.alert(
       'Select Recipe',
-      `Choose what this ${placementNodeType.toLowerCase()} will produce:`,
+      `Choose what this ${nodeType.toLowerCase()} will produce:`,
       [
         ...recipeOptions.map(({ id, recipe }) => {
           const outputMaterialId = recipe.outputs[0]?.materialId;
           const outputName = outputMaterialId ? MATERIALS[outputMaterialId]?.name : id;
           return {
             text: outputName ?? id,
-            onPress: () => placeNode(placementNodeType, gridX, gridY, id),
+            onPress: () => placeNode(nodeType, worldX, worldY, id),
           };
         }),
         { text: 'Cancel', style: 'cancel' as const },
@@ -132,7 +131,12 @@ export default function GameScreen() {
     );
   }
 
-  function promptConnection(sourceNodeId: string, targetNodeId: string) {
+  function promptConnection(
+    sourceNodeId: string,
+    targetNodeId: string,
+    sourcePortId?: ConnectionPortId,
+    targetPortId?: ConnectionPortId
+  ) {
     const sourceNode = useFactoryStore.getState().nodes[sourceNodeId];
     const targetNode = useFactoryStore.getState().nodes[targetNodeId];
 
@@ -147,7 +151,7 @@ export default function GameScreen() {
       buttons.push({
         text: 'Power',
         onPress: () => {
-          const result = connectPower(sourceNodeId, targetNodeId, tierDefinition?.maxTransferRate ?? sourceNode.powerOutput);
+          const result = connectPower(sourceNodeId, targetNodeId, tierDefinition?.maxTransferRate ?? sourceNode.powerOutput, sourcePortId, targetPortId);
           if (!result.success) {
             Alert.alert('Connection Failed', result.error ?? 'Unable to connect nodes.');
           }
@@ -163,7 +167,7 @@ export default function GameScreen() {
         const materialButtons = getUnlockedMaterialIds().map((materialId) => ({
           text: MATERIALS[materialId]?.name ?? materialId.replace(/_/g, ' '),
           onPress: () => {
-            const result = connectNodes(sourceNodeId, targetNodeId, materialId, 10);
+            const result = connectNodes(sourceNodeId, targetNodeId, materialId, 10, sourcePortId, targetPortId);
             if (!result.success) {
               Alert.alert('Connection Failed', result.error ?? 'Unable to connect nodes.');
             }
@@ -211,8 +215,13 @@ export default function GameScreen() {
     }
   }
 
-  function handleDrawConnection(sourceNodeId: string, targetNodeId: string) {
-    promptConnection(sourceNodeId, targetNodeId);
+  function handleDrawConnection(
+    sourceNodeId: string,
+    targetNodeId: string,
+    sourcePortId?: ConnectionPortId,
+    targetPortId?: ConnectionPortId
+  ) {
+    promptConnection(sourceNodeId, targetNodeId, sourcePortId, targetPortId);
   }
 
   return (
@@ -221,7 +230,7 @@ export default function GameScreen() {
         <ControlStrip />
       </View>
       <View style={[styles.canvas, isDockRaised && styles.canvasDockRaised]}>
-        <GridCanvas onTapCell={handleTapCell} onTapNode={handleTapNode} onDrawConnection={handleDrawConnection} />
+        <GridCanvas onPlaceNode={handlePlaceNode} onTapNode={handleTapNode} onDrawConnection={handleDrawConnection} />
       </View>
       <View style={[styles.dock, isDockRaised && styles.dockRaised]}>
         <DockLedger />

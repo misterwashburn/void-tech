@@ -10,7 +10,9 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withTiming,
+  runOnJS,
 } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFactoryStore } from '../store/useFactoryStore';
 import { useUIStore } from '../store/useUIStore';
@@ -200,6 +202,7 @@ export default function DockLedger() {
   const activeTab = useUIStore((s) => s.activeTab);
   const selectedNodeId = useUIStore((s) => s.selectedNodeId);
   const setPlacementNodeType = useUIStore((s) => s.setPlacementNodeType);
+  const requestPlacementDrop = useUIStore((s) => s.requestPlacementDrop);
   const setSelectedNodeId = useUIStore((s) => s.setSelectedNodeId);
   const setConnectingFromId = useUIStore((s) => s.setConnectingFromId);
   const setActiveTab = useUIStore((s) => s.setActiveTab);
@@ -347,20 +350,14 @@ export default function DockLedger() {
               const isSelected = placementNodeType === type;
               const isUnlocked = unlockedNodeTypes.includes(type);
               return (
-                <TouchableOpacity
+                <DraggablePaletteNode
                   key={type}
-                  disabled={!isUnlocked}
-                  style={[
-                    styles.paletteButton,
-                    isSelected && styles.paletteButtonSelected,
-                    !isUnlocked && styles.paletteButtonLocked,
-                  ]}
-                  onPress={() => setPlacementNodeType(type)}
-                >
-                  <Text style={[styles.paletteCode, !isUnlocked && styles.lockedText]}>{getNodeCode(type)}</Text>
-                  <Text style={[styles.paletteName, !isUnlocked && styles.lockedText]}>{getNodeDisplayName(type)}</Text>
-                  {!isUnlocked && <Text style={styles.lockedLabel}>LOCKED</Text>}
-                </TouchableOpacity>
+                  type={type}
+                  isSelected={isSelected}
+                  isUnlocked={isUnlocked}
+                  onSelect={setPlacementNodeType}
+                  onDrop={requestPlacementDrop}
+                />
               );
             })}
             <TouchableOpacity
@@ -377,6 +374,71 @@ export default function DockLedger() {
 
       {activeTab === 'MISSIONS' && renderMissionPanel()}
     </View>
+  );
+}
+
+
+function DraggablePaletteNode({
+  type,
+  isSelected,
+  isUnlocked,
+  onSelect,
+  onDrop,
+}: {
+  type: NodeType;
+  isSelected: boolean;
+  isUnlocked: boolean;
+  onSelect: (type: NodeType | null) => void;
+  onDrop: (type: NodeType, absoluteX: number, absoluteY: number) => void;
+}) {
+  const dragX = useSharedValue(0);
+  const dragY = useSharedValue(0);
+  const isDragging = useSharedValue(false);
+
+  const dragStyle = useAnimatedStyle(() => ({
+    opacity: isDragging.value ? 0.85 : 1,
+    transform: [
+      { translateX: dragX.value },
+      { translateY: dragY.value },
+      { scale: isDragging.value ? 1.05 : 1 },
+    ],
+  }));
+
+  const dragGesture = Gesture.Pan()
+    .enabled(isUnlocked)
+    .onBegin(() => {
+      isDragging.value = true;
+      runOnJS(onSelect)(type);
+    })
+    .onUpdate((event) => {
+      dragX.value = event.translationX;
+      dragY.value = event.translationY;
+    })
+    .onFinalize((event) => {
+      isDragging.value = false;
+      dragX.value = withTiming(0, { duration: 120 });
+      dragY.value = withTiming(0, { duration: 120 });
+      runOnJS(onDrop)(type, event.absoluteX, event.absoluteY);
+    });
+
+  return (
+    <GestureDetector gesture={dragGesture}>
+      <Animated.View
+        style={[
+          styles.paletteButton,
+          isSelected && styles.paletteButtonSelected,
+          !isUnlocked && styles.paletteButtonLocked,
+          dragStyle,
+        ]}
+      >
+        <TouchableOpacity disabled={!isUnlocked} activeOpacity={0.85} onPress={() => onSelect(type)}>
+          <Text style={[styles.paletteCode, !isUnlocked && styles.lockedText]}>{getNodeCode(type)}</Text>
+          <Text style={[styles.paletteName, !isUnlocked && styles.lockedText]}>{getNodeDisplayName(type)}</Text>
+          <Text style={styles.paletteHint}>Drag onto the play area to place anywhere.</Text>
+          {!isUnlocked && <Text style={styles.lockedLabel}>LOCKED</Text>}
+        </TouchableOpacity>
+      </Animated.View>
+    </GestureDetector>
   );
 }
 
@@ -452,7 +514,7 @@ function MachineStatusPanel({
           <Text style={styles.machineCode}>{getNodeCode(node.type)}</Text>
           <View style={styles.machineTitleBlock}>
             <Text style={styles.machineName} numberOfLines={1}>{node.name}</Text>
-            <Text style={styles.machineSubtitle}>{node.type} • Grid {node.gridX}, {node.gridY}</Text>
+            <Text style={styles.machineSubtitle}>{node.type} • X {Math.round(node.x ?? node.gridX * 80 + 8)}, Y {Math.round(node.y ?? node.gridY * 80 + 8)}</Text>
           </View>
         </View>
         <View style={[styles.statusBadge, { borderColor: statusColor }]}>
