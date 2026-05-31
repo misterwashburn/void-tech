@@ -19,14 +19,43 @@ import { MATERIALS } from '../data/materials';
 import { MISSIONS, getCurrentMission } from '../data/missions';
 import { POWER_TIERS } from '../data/power';
 
-const NODE_TYPES: NodeType[] = [
-  'POWER_GENERATOR',
-  'HARVESTER',
-  'REFINER',
-  'ASSEMBLER',
-  'STORAGE',
-  'SINK',
-  'FEEDBACK_REGULATOR',
+type BuildCategoryId = 'POWER' | 'VOID_HARVESTING' | 'MANUFACTURING' | 'REFINING' | 'TRANSPORTING';
+
+type BuildMenuItem =
+  | { kind: 'NODE'; nodeType: NodeType }
+  | { kind: 'METHOD'; id: string; code: string; name: string; description: string; isUnlocked: boolean };
+
+const BUILD_CATEGORIES: Array<{ id: BuildCategoryId; label: string; description: string; nodeTypes: NodeType[] }> = [
+  {
+    id: 'POWER',
+    label: 'Power',
+    description: 'Generators and power connection methods.',
+    nodeTypes: ['POWER_GENERATOR'],
+  },
+  {
+    id: 'VOID_HARVESTING',
+    label: 'Void Harvesting',
+    description: 'Extract raw void materials from the grid.',
+    nodeTypes: ['HARVESTER'],
+  },
+  {
+    id: 'MANUFACTURING',
+    label: 'Manufacturing',
+    description: 'Assemble advanced parts and control systems.',
+    nodeTypes: ['ASSEMBLER', 'FEEDBACK_REGULATOR'],
+  },
+  {
+    id: 'REFINING',
+    label: 'Refining',
+    description: 'Convert raw outputs into processed materials.',
+    nodeTypes: ['REFINER'],
+  },
+  {
+    id: 'TRANSPORTING',
+    label: 'Transporting',
+    description: 'Conveyance endpoints and material routing support.',
+    nodeTypes: ['STORAGE', 'SINK'],
+  },
 ];
 
 const PERF_HISTORY_LIMIT = 18;
@@ -47,6 +76,20 @@ function getNodeCode(type: NodeType): string {
     case 'SINK': return 'SNK';
     case 'FEEDBACK_REGULATOR': return 'FBK';
     default: return '???';
+  }
+}
+
+
+function getNodeDisplayName(type: NodeType): string {
+  switch (type) {
+    case 'POWER_GENERATOR': return 'Generator';
+    case 'HARVESTER': return 'Void Harvester';
+    case 'REFINER': return 'Refiner';
+    case 'ASSEMBLER': return 'Assembler';
+    case 'STORAGE': return 'Storage';
+    case 'SINK': return 'Output Sink';
+    case 'FEEDBACK_REGULATOR': return 'Feedback Regulator';
+    default: return type;
   }
 }
 
@@ -168,6 +211,21 @@ export default function DockLedger() {
   const unlockedPowerTiers = getUnlockedPowerTiers();
   const currentMission = getCurrentMission(completedMissionIds);
   const completedMissions = MISSIONS.filter((mission) => completedMissionIds.includes(mission.id));
+  const [activeBuildCategoryId, setActiveBuildCategoryId] = useState<BuildCategoryId>('POWER');
+  const activeBuildCategory = BUILD_CATEGORIES.find((category) => category.id === activeBuildCategoryId) ?? BUILD_CATEGORIES[0];
+  const buildMenuItems: BuildMenuItem[] = [
+    ...activeBuildCategory.nodeTypes.map((nodeType) => ({ kind: 'NODE' as const, nodeType })),
+    ...(activeBuildCategory.id === 'POWER'
+      ? [{
+        kind: 'METHOD' as const,
+        id: 'power_line',
+        code: 'LINE',
+        name: 'Power Line',
+        description: 'Draw from a generator to a machine to choose Power.',
+        isUnlocked: unlockedNodeTypes.includes('POWER_GENERATOR'),
+      }]
+      : []),
+  ];
 
   const renderStatusPanel = () => (
     <MachineStatusPanel
@@ -229,7 +287,7 @@ export default function DockLedger() {
           onPress={() => setActiveTab('PALETTE')}
         >
           <Text style={[styles.tabButtonText, activeTab === 'PALETTE' && styles.tabButtonTextActive]}>
-            Place
+            Build
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -251,34 +309,68 @@ export default function DockLedger() {
       </View>
 
       {activeTab === 'PALETTE' && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.paletteScroll} contentContainerStyle={styles.paletteContent}>
-          {NODE_TYPES.map((type) => {
-            const isSelected = placementNodeType === type;
-            const isUnlocked = unlockedNodeTypes.includes(type);
-            return (
-              <TouchableOpacity
-                key={type}
-                disabled={!isUnlocked}
-                style={[
-                  styles.paletteButton,
-                  isSelected && styles.paletteButtonSelected,
-                  !isUnlocked && styles.paletteButtonLocked,
-                ]}
-                onPress={() => setPlacementNodeType(type)}
-              >
-                <Text style={[styles.paletteCode, !isUnlocked && styles.lockedText]}>{getNodeCode(type)}</Text>
-                <Text style={[styles.paletteName, !isUnlocked && styles.lockedText]}>{type}</Text>
-                {!isUnlocked && <Text style={styles.lockedLabel}>LOCKED</Text>}
-              </TouchableOpacity>
-            );
-          })}
-          <TouchableOpacity
-            style={styles.cancelButton}
-            onPress={() => setPlacementNodeType(null)}
-          >
-            <Text style={styles.cancelButtonText}>Cancel</Text>
-          </TouchableOpacity>
-        </ScrollView>
+        <View style={styles.buildPanel}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll} contentContainerStyle={styles.categoryContent}>
+            {BUILD_CATEGORIES.map((category) => {
+              const isActive = category.id === activeBuildCategoryId;
+              return (
+                <TouchableOpacity
+                  key={category.id}
+                  style={[styles.categoryButton, isActive && styles.categoryButtonActive]}
+                  onPress={() => setActiveBuildCategoryId(category.id)}
+                >
+                  <Text style={[styles.categoryButtonText, isActive && styles.categoryButtonTextActive]}>{category.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          <Text style={styles.categoryDescription}>{activeBuildCategory.description}</Text>
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.paletteScroll} contentContainerStyle={styles.paletteContent}>
+            {buildMenuItems.map((item) => {
+              if (item.kind === 'METHOD') {
+                return (
+                  <View
+                    key={item.id}
+                    style={[styles.paletteButton, !item.isUnlocked && styles.paletteButtonLocked]}
+                  >
+                    <Text style={[styles.paletteCode, !item.isUnlocked && styles.lockedText]}>{item.code}</Text>
+                    <Text style={[styles.paletteName, !item.isUnlocked && styles.lockedText]}>{item.name}</Text>
+                    <Text style={styles.paletteHint}>{item.description}</Text>
+                    {!item.isUnlocked && <Text style={styles.lockedLabel}>LOCKED</Text>}
+                  </View>
+                );
+              }
+
+              const type = item.nodeType;
+              const isSelected = placementNodeType === type;
+              const isUnlocked = unlockedNodeTypes.includes(type);
+              return (
+                <TouchableOpacity
+                  key={type}
+                  disabled={!isUnlocked}
+                  style={[
+                    styles.paletteButton,
+                    isSelected && styles.paletteButtonSelected,
+                    !isUnlocked && styles.paletteButtonLocked,
+                  ]}
+                  onPress={() => setPlacementNodeType(type)}
+                >
+                  <Text style={[styles.paletteCode, !isUnlocked && styles.lockedText]}>{getNodeCode(type)}</Text>
+                  <Text style={[styles.paletteName, !isUnlocked && styles.lockedText]}>{getNodeDisplayName(type)}</Text>
+                  {!isUnlocked && <Text style={styles.lockedLabel}>LOCKED</Text>}
+                </TouchableOpacity>
+              );
+            })}
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => setPlacementNodeType(null)}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
       )}
 
       {activeTab === 'LEDGER' && renderStatusPanel()}
@@ -424,7 +516,7 @@ function MachineStatusPanel({
 
       <View style={styles.statusActions}>
         <TouchableOpacity style={styles.connectButtonLarge} onPress={() => onConnect(node.id)}>
-          <Text style={styles.connectButtonText}>Connect</Text>
+          <Text style={styles.connectButtonText}>Connect Tap Mode</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.deleteButtonLarge} onPress={() => onDelete(node.id)}>
           <Text style={styles.deleteButtonTextLarge}>Delete</Text>
@@ -523,6 +615,42 @@ const styles = StyleSheet.create({
   tabButtonTextActive: {
     color: '#0A0E14',
   },
+  buildPanel: {
+    flex: 1,
+  },
+  categoryScroll: {
+    maxHeight: 36,
+  },
+  categoryContent: {
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  categoryButton: {
+    borderColor: '#334155',
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  categoryButtonActive: {
+    backgroundColor: '#1C2733',
+    borderColor: '#00BCD4',
+  },
+  categoryButtonText: {
+    color: '#8B9DC3',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  categoryButtonTextActive: {
+    color: '#FFFFFF',
+  },
+  categoryDescription: {
+    color: '#8B9DC3',
+    fontSize: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 2,
+  },
   paletteScroll: {
     flex: 1,
   },
@@ -564,6 +692,13 @@ const styles = StyleSheet.create({
   },
   lockedText: {
     color: '#607D8B',
+  },
+  paletteHint: {
+    color: '#8B9DC3',
+    fontSize: 9,
+    marginTop: 3,
+    maxWidth: 120,
+    textAlign: 'center',
   },
   lockedLabel: {
     color: '#607D8B',

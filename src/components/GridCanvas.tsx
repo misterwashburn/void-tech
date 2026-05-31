@@ -32,6 +32,7 @@ const labelFont = matchFont({
 interface GridCanvasProps {
   onTapCell: (gridX: number, gridY: number) => void;
   onTapNode: (nodeId: string) => void;
+  onDrawConnection: (sourceNodeId: string, targetNodeId: string) => void;
 }
 
 const GRID_CELL_SIZE = 80;
@@ -43,6 +44,7 @@ const DOT_COLOR = 'rgba(0, 188, 212, 0.25)';
 
 const CANVAS_WIDTH = 2000;
 const CANVAS_HEIGHT = 2000;
+const NODE_DRAW_HIT_PADDING = 10;
 
 const MIN_SCALE = 0.3;
 const MAX_SCALE = 3.0;
@@ -85,7 +87,7 @@ function getNodeCode(type: FactoryNode['type']): string {
   }
 }
 
-export default function GridCanvas({ onTapCell, onTapNode }: GridCanvasProps) {
+export default function GridCanvas({ onTapCell, onTapNode, onDrawConnection }: GridCanvasProps) {
   const { getNodesMap, getEdgesMap } = useFactoryStore();
   const nodes = getNodesMap();
   const edges = getEdgesMap();
@@ -98,11 +100,22 @@ export default function GridCanvas({ onTapCell, onTapNode }: GridCanvasProps) {
   const scale = useSharedValue(1.0);
   const panStartX = useSharedValue(0);
   const panStartY = useSharedValue(0);
+  const isDrawingConnection = useSharedValue(false);
+  const connectionSourceId = useSharedValue('');
+  const connectionStartX = useSharedValue(0);
+  const connectionStartY = useSharedValue(0);
 
   // Keep Skia props on the JS side only; driving Skia props with Reanimated
   // shared values can cause Reanimated to try to execute non-worklet Skia helpers
   // on the UI thread in this Expo/Reanimated/Skia version combination.
   const [stalledPulse, setStalledPulse] = useState(1.0);
+  const [draftConnection, setDraftConnection] = useState<{
+    sourceNodeId: string;
+    startX: number;
+    startY: number;
+    endX: number;
+    endY: number;
+  } | null>(null);
   useEffect(() => {
     let dimmed = false;
     const intervalId = setInterval(() => {
@@ -116,15 +129,100 @@ export default function GridCanvas({ onTapCell, onTapNode }: GridCanvasProps) {
   const nodeList = Array.from(nodes.values());
   const edgeList = Array.from(edges.values());
 
+  const drawableNodeBounds = useMemo(() => nodeList.map((node) => ({
+    id: node.id,
+    left: node.gridX * GRID_CELL_SIZE + NODE_OFFSET - NODE_DRAW_HIT_PADDING,
+    top: node.gridY * GRID_CELL_SIZE + NODE_OFFSET - NODE_DRAW_HIT_PADDING,
+    right: node.gridX * GRID_CELL_SIZE + NODE_OFFSET + NODE_SIZE + NODE_DRAW_HIT_PADDING,
+    bottom: node.gridY * GRID_CELL_SIZE + NODE_OFFSET + NODE_SIZE + NODE_DRAW_HIT_PADDING,
+    cx: node.gridX * GRID_CELL_SIZE + NODE_OFFSET + NODE_SIZE / 2,
+    cy: node.gridY * GRID_CELL_SIZE + NODE_OFFSET + NODE_SIZE / 2,
+  })), [nodeList]);
+
+
+  const updateDraftConnection = useCallback((draft: typeof draftConnection) => {
+    setDraftConnection(draft);
+  }, []);
+
+  const finishDraftConnection = useCallback(
+    (sourceNodeId: string, worldX: number, worldY: number) => {
+      setDraftConnection(null);
+      const targetNode = drawableNodeBounds.find(
+        (node) =>
+          node.id !== sourceNodeId &&
+          worldX >= node.left &&
+          worldX <= node.right &&
+          worldY >= node.top &&
+          worldY <= node.bottom
+      );
+
+      if (targetNode) {
+        onDrawConnection(sourceNodeId, targetNode.id);
+      }
+    },
+    [drawableNodeBounds, onDrawConnection]
+  );
+
   // Pan gesture
   const panGesture = Gesture.Pan()
-    .onBegin(() => {
+    .onBegin((e) => {
+      const worldX = (e.x - translateX.value) / scale.value;
+      const worldY = (e.y - translateY.value) / scale.value;
+      const sourceNode = drawableNodeBounds.find(
+        (node) =>
+          worldX >= node.left &&
+          worldX <= node.right &&
+          worldY >= node.top &&
+          worldY <= node.bottom
+      );
+
+      if (sourceNode) {
+        isDrawingConnection.value = true;
+        connectionSourceId.value = sourceNode.id;
+        connectionStartX.value = sourceNode.cx;
+        connectionStartY.value = sourceNode.cy;
+        runOnJS(updateDraftConnection)({
+          sourceNodeId: sourceNode.id,
+          startX: sourceNode.cx,
+          startY: sourceNode.cy,
+          endX: worldX,
+          endY: worldY,
+        });
+        return;
+      }
+
+      isDrawingConnection.value = false;
+      connectionSourceId.value = '';
       panStartX.value = translateX.value;
       panStartY.value = translateY.value;
     })
     .onUpdate((e) => {
+      if (isDrawingConnection.value) {
+        const worldX = (e.x - translateX.value) / scale.value;
+        const worldY = (e.y - translateY.value) / scale.value;
+        runOnJS(updateDraftConnection)({
+          sourceNodeId: connectionSourceId.value,
+          startX: connectionStartX.value,
+          startY: connectionStartY.value,
+          endX: worldX,
+          endY: worldY,
+        });
+        return;
+      }
+
       translateX.value = panStartX.value + e.translationX;
       translateY.value = panStartY.value + e.translationY;
+    })
+    .onFinalize((e) => {
+      if (!isDrawingConnection.value) {
+        return;
+      }
+
+      const worldX = (e.x - translateX.value) / scale.value;
+      const worldY = (e.y - translateY.value) / scale.value;
+      runOnJS(finishDraftConnection)(connectionSourceId.value, worldX, worldY);
+      isDrawingConnection.value = false;
+      connectionSourceId.value = '';
     });
 
   // Pinch gesture
@@ -226,6 +324,15 @@ export default function GridCanvas({ onTapCell, onTapNode }: GridCanvasProps) {
                 />
               );
             })}
+
+            {draftConnection && (
+              <Line
+                p1={{ x: draftConnection.startX, y: draftConnection.startY }}
+                p2={{ x: draftConnection.endX, y: draftConnection.endY }}
+                color="rgba(255, 255, 255, 0.8)"
+                strokeWidth={3}
+              />
+            )}
 
             {/* Nodes */}
             {nodeList.map((node) => {
