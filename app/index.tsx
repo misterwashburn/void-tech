@@ -131,61 +131,87 @@ export default function GameScreen() {
     );
   }
 
-  function handleTapNode(nodeId: string) {
-    if (connectingFromId && nodeId !== connectingFromId) {
-      const sourceNode = useFactoryStore.getState().nodes[connectingFromId];
-      const targetNode = useFactoryStore.getState().nodes[nodeId];
-      const buttons = [];
+  function promptConnection(sourceNodeId: string, targetNodeId: string) {
+    const sourceNode = useFactoryStore.getState().nodes[sourceNodeId];
+    const targetNode = useFactoryStore.getState().nodes[targetNodeId];
 
-      if (sourceNode?.type === 'POWER_GENERATOR' && targetNode?.type !== 'POWER_GENERATOR') {
-        const tierDefinition = sourceNode.powerTier ? getPowerTierDefinition(sourceNode.powerTier) : undefined;
-        buttons.push({
-          text: 'Power Line',
-          onPress: () => {
-            const result = connectPower(connectingFromId, nodeId, tierDefinition?.maxTransferRate ?? sourceNode.powerOutput);
-            if (!result.success) {
-              Alert.alert('Connection Failed', result.error ?? 'Unable to connect nodes.');
-            }
-            setConnectingFromId(null);
-            setSelectedNodeId(null);
-          },
-        });
-      }
+    if (!sourceNode || !targetNode || sourceNodeId === targetNodeId) {
+      return;
+    }
 
-      buttons.push(...getUnlockedMaterialIds().map((materialId) => ({
-        text: MATERIALS[materialId]?.name ?? materialId.replace(/_/g, ' '),
+    const buttons = [];
+
+    if (sourceNode.type === 'POWER_GENERATOR' && targetNode.type !== 'POWER_GENERATOR') {
+      const tierDefinition = sourceNode.powerTier ? getPowerTierDefinition(sourceNode.powerTier) : undefined;
+      buttons.push({
+        text: 'Power',
         onPress: () => {
-          const result = connectNodes(connectingFromId, nodeId, materialId, 10);
+          const result = connectPower(sourceNodeId, targetNodeId, tierDefinition?.maxTransferRate ?? sourceNode.powerOutput);
           if (!result.success) {
             Alert.alert('Connection Failed', result.error ?? 'Unable to connect nodes.');
           }
           setConnectingFromId(null);
           setSelectedNodeId(null);
         },
-      })));
-
-      Alert.alert(
-        'Select Connection',
-        'Choose whether this connection carries power or a material:',
-        [
-          ...buttons,
-          {
-            text: 'Cancel',
-            style: 'cancel' as const,
-            onPress: () => {
-              setConnectingFromId(null);
-            },
-          },
-        ]
-      );
-    } else {
-      if (selectedNodeId === nodeId) {
-        setSelectedNodeId(null);
-      } else {
-        setSelectedNodeId(nodeId);
-        setActiveTab('LEDGER');
-      }
+      });
     }
+
+    buttons.push({
+      text: 'Transport',
+      onPress: () => {
+        const materialButtons = getUnlockedMaterialIds().map((materialId) => ({
+          text: MATERIALS[materialId]?.name ?? materialId.replace(/_/g, ' '),
+          onPress: () => {
+            const result = connectNodes(sourceNodeId, targetNodeId, materialId, 10);
+            if (!result.success) {
+              Alert.alert('Connection Failed', result.error ?? 'Unable to connect nodes.');
+            }
+            setConnectingFromId(null);
+            setSelectedNodeId(null);
+          },
+        }));
+
+        Alert.alert(
+          'Select Transport Material',
+          'Choose what this conveyance line should carry:',
+          [
+            ...materialButtons,
+            { text: 'Cancel', style: 'cancel' as const, onPress: () => setConnectingFromId(null) },
+          ]
+        );
+      },
+    });
+
+    Alert.alert(
+      'Select Connection Type',
+      'Choose what type of connection to draw. Fluid unlocks later and is hidden until available.',
+      [
+        ...buttons,
+        {
+          text: 'Cancel',
+          style: 'cancel' as const,
+          onPress: () => setConnectingFromId(null),
+        },
+      ]
+    );
+  }
+
+  function handleTapNode(nodeId: string) {
+    if (connectingFromId && nodeId !== connectingFromId) {
+      promptConnection(connectingFromId, nodeId);
+      return;
+    }
+
+    if (selectedNodeId === nodeId) {
+      setSelectedNodeId(null);
+    } else {
+      setSelectedNodeId(nodeId);
+      setActiveTab('LEDGER');
+    }
+  }
+
+  function handleDrawConnection(sourceNodeId: string, targetNodeId: string) {
+    promptConnection(sourceNodeId, targetNodeId);
   }
 
   return (
@@ -194,7 +220,7 @@ export default function GameScreen() {
         <ControlStrip />
       </View>
       <View style={styles.canvas}>
-        <GridCanvas onTapCell={handleTapCell} onTapNode={handleTapNode} />
+        <GridCanvas onTapCell={handleTapCell} onTapNode={handleTapNode} onDrawConnection={handleDrawConnection} />
       </View>
       <View style={styles.dock}>
         <DockLedger />
