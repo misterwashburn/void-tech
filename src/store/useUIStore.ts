@@ -6,11 +6,13 @@ interface UIState {
   selectedNodeId: string | null;
   connectingFromId: string | null;
   activeTab: 'PALETTE' | 'LEDGER' | 'MISSIONS';
+  isDockRaised: boolean;
 
   setPlacementNodeType: (type: NodeType | null) => void;
   setSelectedNodeId: (id: string | null) => void;
   setConnectingFromId: (id: string | null) => void;
   setActiveTab: (tab: 'PALETTE' | 'LEDGER' | 'MISSIONS') => void;
+  setDockRaised: (isRaised: boolean) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -18,9 +20,16 @@ export const useUIStore = create<UIState>((set) => ({
   selectedNodeId: null,
   connectingFromId: null,
   activeTab: 'PALETTE',
+  isDockRaised: false,
 
-  setPlacementNodeType: (type) => set({ placementNodeType: type, selectedNodeId: null, connectingFromId: null }),
+  setPlacementNodeType: (type) => set({
+    placementNodeType: type,
+    selectedNodeId: null,
+    connectingFromId: null,
+    isDockRaised: type !== null,
+  }),
   setSelectedNodeId: (id) => set({ selectedNodeId: id, connectingFromId: null }),
   setConnectingFromId: (id) => set({ connectingFromId: id }),
-  setActiveTab: (tab) => set({ activeTab: tab }),
+  setActiveTab: (tab) => set({ activeTab: tab, isDockRaised: true }),
+  setDockRaised: (isRaised) => set({ isDockRaised: isRaised }),
 }));
