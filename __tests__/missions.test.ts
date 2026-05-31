@@ -1,6 +1,7 @@
 import { getCurrentMission, getUnlockedProgression, INITIAL_UNLOCKS, MISSIONS } from '../src/data/missions';
 import { useFactoryStore } from '../src/store/useFactoryStore';
 import { NARRATIVE_BASELINE, RELAY_COMMUNICATIONS, VOID_TYPES } from '../src/data/progression';
+import { POWER_TIERS } from '../src/data/power';
 import { TickResult } from '../src/types';
 
 describe('mission progression', () => {
@@ -63,6 +64,22 @@ describe('mission progression', () => {
     expect(MISSIONS.map((mission) => mission.tier)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     expect(MISSIONS.slice(0, 9).every((mission) => mission.relayCommunication)).toBe(true);
     expect(MISSIONS[9].relayCommunication).toBeUndefined();
+  });
+
+  it('ties power generators to their unlock tiers and void discoveries', () => {
+    expect(POWER_TIERS.map((powerTier) => powerTier.tier)).toEqual([0, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(POWER_TIERS.map((powerTier) => powerTier.unlockedInTier)).toEqual([0, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(getUnlockedProgression([]).powerTiers).toEqual([0]);
+    expect(getUnlockedProgression(['mission_void_ore']).powerTiers).toEqual([0, 2]);
+    expect(POWER_TIERS.find((powerTier) => powerTier.tier === 2)?.name).toContain('Field Dynamo');
+    expect(POWER_TIERS.find((powerTier) => powerTier.tier === 3)).toMatchObject({
+      name: 'Vesper Charge Tap',
+      voidTypeId: 'vesper_charge',
+    });
+    expect(POWER_TIERS.find((powerTier) => powerTier.tier === 4)).toMatchObject({
+      name: 'Brine-Cooled Vesper Tap',
+      voidTypeId: 'ecliptic_brine',
+    });
   });
 
   it('returns null current mission after the full mission chain is completed', () => {

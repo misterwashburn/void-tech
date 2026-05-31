@@ -37,8 +37,8 @@ export default function GameScreen() {
     powerTier?: PowerTier
   ): FactoryNode {
     const recipe = recipeId ? RECIPES[recipeId] : undefined;
-    const selectedPowerTier = nodeType === 'POWER_GENERATOR' ? powerTier ?? 1 : undefined;
-    const powerDefinition = selectedPowerTier ? getPowerTierDefinition(selectedPowerTier) : undefined;
+    const selectedPowerTier = nodeType === 'POWER_GENERATOR' ? powerTier ?? 0 : undefined;
+    const powerDefinition = selectedPowerTier !== undefined ? getPowerTierDefinition(selectedPowerTier) : undefined;
     const recipeOutput = recipe?.outputs[0]?.materialId;
     const recipeOutputName = recipeOutput ? MATERIALS[recipeOutput]?.name : undefined;
 

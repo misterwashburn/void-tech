@@ -29,7 +29,7 @@ export const INITIAL_UNLOCKS: Required<MissionUnlocks> = {
   nodeTypes: ['POWER_GENERATOR', 'HARVESTER', 'SINK', 'STORAGE', 'RELAY'],
   materialIds: ['void_ore'],
   recipeIds: [],
-  powerTiers: [1],
+  powerTiers: [0],
 };
 
 export const MISSIONS: MissionDefinition[] = [
