@@ -28,6 +28,7 @@ export default function GameScreen() {
   const connectingFromId = useUIStore((s) => s.connectingFromId);
   const setConnectingFromId = useUIStore((s) => s.setConnectingFromId);
   const setActiveTab = useUIStore((s) => s.setActiveTab);
+  const isDockRaised = useUIStore((s) => s.isDockRaised);
 
   function buildNode(
     nodeType: NodeType,
@@ -219,10 +220,10 @@ export default function GameScreen() {
       <View style={styles.controlStrip}>
         <ControlStrip />
       </View>
-      <View style={styles.canvas}>
+      <View style={[styles.canvas, isDockRaised && styles.canvasDockRaised]}>
         <GridCanvas onTapCell={handleTapCell} onTapNode={handleTapNode} onDrawConnection={handleDrawConnection} />
       </View>
-      <View style={styles.dock}>
+      <View style={[styles.dock, isDockRaised && styles.dockRaised]}>
         <DockLedger />
       </View>
     </View>
@@ -240,7 +241,13 @@ const styles = StyleSheet.create({
   canvas: {
     flex: 65,
   },
+  canvasDockRaised: {
+    flex: 52,
+  },
   dock: {
     flex: 20,
+  },
+  dockRaised: {
+    flex: 33,
   },
 });
