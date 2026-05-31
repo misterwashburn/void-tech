@@ -9,7 +9,7 @@ export type NodeType =
   | 'FEEDBACK_REGULATOR';
 
 export type ConnectionType = 'RESOURCE' | 'POWER';
-export type PowerTier = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+export type PowerTier = 0 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 
 export interface Material {
   id: string;

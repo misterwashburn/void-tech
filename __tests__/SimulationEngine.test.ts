@@ -320,7 +320,7 @@ describe('SimulationEngine', () => {
       id: 'p1',
       type: 'POWER_GENERATOR',
       powerOutput: 35,
-      powerTier: 1,
+      powerTier: 0,
     });
     const harvester = makeNode({
       id: 'h1',
@@ -342,7 +342,7 @@ describe('SimulationEngine', () => {
       id: 'p1',
       type: 'POWER_GENERATOR',
       powerOutput: 35,
-      powerTier: 1,
+      powerTier: 0,
     });
     const harvester = makeNode({
       id: 'h1',
