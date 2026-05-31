@@ -16,6 +16,7 @@ import {
 import Animated, {
   runOnJS,
   useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
 } from 'react-native-reanimated';
 
@@ -190,16 +191,19 @@ export default function GridCanvas({ onPlaceNode, onTapNode, onDrawConnection }:
   const connectionSourcePortId = useSharedValue<ConnectionPortId | ''>('');
   const connectionStartX = useSharedValue(0);
   const connectionStartY = useSharedValue(0);
+  const connectionEndX = useSharedValue(0);
+  const connectionEndY = useSharedValue(0);
+  const draftConnectionStart = useDerivedValue(() => ({
+    x: connectionStartX.value,
+    y: connectionStartY.value,
+  }));
+  const draftConnectionEnd = useDerivedValue(() => ({
+    x: connectionEndX.value,
+    y: connectionEndY.value,
+  }));
 
   const [stalledPulse, setStalledPulse] = useState(1.0);
-  const [draftConnection, setDraftConnection] = useState<{
-    sourceNodeId: string;
-    sourcePortId: ConnectionPortId;
-    startX: number;
-    startY: number;
-    endX: number;
-    endY: number;
-  } | null>(null);
+  const [draftConnectionSourceId, setDraftConnectionSourceId] = useState<string | null>(null);
 
   useEffect(() => {
     let dimmed = false;
@@ -211,8 +215,8 @@ export default function GridCanvas({ onPlaceNode, onTapNode, onDrawConnection }:
     return () => clearInterval(intervalId);
   }, []);
 
-  const nodeList = Array.from(nodes.values());
-  const edgeList = Array.from(edges.values());
+  const nodeList = useMemo(() => Array.from(nodes.values()), [nodes]);
+  const edgeList = useMemo(() => Array.from(edges.values()), [edges]);
 
   const drawableNodeBounds = useMemo(() => nodeList.map((node) => {
     const { x, y } = getNodeOrigin(node);
@@ -236,26 +240,33 @@ export default function GridCanvas({ onPlaceNode, onTapNode, onDrawConnection }:
     return map;
   }, [drawableNodeBounds]);
 
-  const visiblePortNodeIds = useMemo(() => new Set([selectedNodeId, connectingFromId, draftConnection?.sourceNodeId].filter(Boolean) as string[]), [connectingFromId, draftConnection?.sourceNodeId, selectedNodeId]);
+  const visiblePortNodeIds = useMemo(
+    () => new Set([selectedNodeId, connectingFromId, draftConnectionSourceId].filter(Boolean) as string[]),
+    [connectingFromId, draftConnectionSourceId, selectedNodeId]
+  );
 
   const mirrorTransform = useCallback((next: { translateX: number; translateY: number; scale: number }) => {
     transformSnapshot.current = next;
   }, []);
 
-  const updateDraftConnection = useCallback((draft: typeof draftConnection) => {
-    setDraftConnection(draft);
+  const beginDraftConnection = useCallback((sourceNodeId: string) => {
+    setDraftConnectionSourceId(sourceNodeId);
+  }, []);
+
+  const clearDraftConnection = useCallback(() => {
+    setDraftConnectionSourceId(null);
   }, []);
 
   const finishDraftConnection = useCallback(
     (sourceNodeId: string, sourcePortId: ConnectionPortId, worldX: number, worldY: number) => {
-      setDraftConnection(null);
+      clearDraftConnection();
       const targetPort = findHitPort(drawableNodeBounds, worldX, worldY, sourceNodeId);
 
       if (targetPort) {
         onDrawConnection(sourceNodeId, targetPort.nodeId, sourcePortId, targetPort.id);
       }
     },
-    [drawableNodeBounds, onDrawConnection]
+    [clearDraftConnection, drawableNodeBounds, onDrawConnection]
   );
 
   useEffect(() => {
@@ -297,14 +308,9 @@ export default function GridCanvas({ onPlaceNode, onTapNode, onDrawConnection }:
         connectionSourcePortId.value = sourcePort.id;
         connectionStartX.value = sourcePort.x;
         connectionStartY.value = sourcePort.y;
-        runOnJS(updateDraftConnection)({
-          sourceNodeId: sourcePort.nodeId,
-          sourcePortId: sourcePort.id,
-          startX: sourcePort.x,
-          startY: sourcePort.y,
-          endX: worldX,
-          endY: worldY,
-        });
+        connectionEndX.value = worldX;
+        connectionEndY.value = worldY;
+        runOnJS(beginDraftConnection)(sourcePort.nodeId);
         return;
       }
 
@@ -318,14 +324,8 @@ export default function GridCanvas({ onPlaceNode, onTapNode, onDrawConnection }:
       if (isDrawingConnection.value) {
         const worldX = (e.x - translateX.value) / scale.value;
         const worldY = (e.y - translateY.value) / scale.value;
-        runOnJS(updateDraftConnection)({
-          sourceNodeId: connectionSourceId.value,
-          sourcePortId: connectionSourcePortId.value as ConnectionPortId,
-          startX: connectionStartX.value,
-          startY: connectionStartY.value,
-          endX: worldX,
-          endY: worldY,
-        });
+        connectionEndX.value = worldX;
+        connectionEndY.value = worldY;
         return;
       }
 
@@ -430,10 +430,10 @@ export default function GridCanvas({ onPlaceNode, onTapNode, onDrawConnection }:
               );
             })}
 
-            {draftConnection && (
+            {draftConnectionSourceId && (
               <Line
-                p1={{ x: draftConnection.startX, y: draftConnection.startY }}
-                p2={{ x: draftConnection.endX, y: draftConnection.endY }}
+                p1={draftConnectionStart}
+                p2={draftConnectionEnd}
                 color="rgba(255, 255, 255, 0.8)"
                 strokeWidth={3}
               />
