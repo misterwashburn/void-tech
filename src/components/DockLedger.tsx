@@ -1,16 +1,20 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  FlatList,
   ScrollView,
 } from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFactoryStore } from '../store/useFactoryStore';
 import { useUIStore } from '../store/useUIStore';
-import { FactoryNode, NodeType } from '../types';
+import { FactoryEdge, FactoryNode, NodeType, PowerEdge, ResourceEdge } from '../types';
 import { MATERIALS } from '../data/materials';
 import { MISSIONS, getCurrentMission } from '../data/missions';
 import { POWER_TIERS } from '../data/power';
@@ -24,6 +28,14 @@ const NODE_TYPES: NodeType[] = [
   'SINK',
   'FEEDBACK_REGULATOR',
 ];
+
+const PERF_HISTORY_LIMIT = 18;
+
+type PerfSample = {
+  efficiency: number;
+  power: number;
+  throughput: number;
+};
 
 function getNodeCode(type: NodeType): string {
   switch (type) {
@@ -56,9 +68,86 @@ function formatQuantity(quantity: number): string {
   return quantity.toFixed(1);
 }
 
+function isResourceEdge(edge: FactoryEdge): edge is ResourceEdge {
+  return edge.connectionType === 'RESOURCE';
+}
+
+function isPowerEdge(edge: FactoryEdge): edge is PowerEdge {
+  return edge.connectionType === 'POWER';
+}
+
+function getNodeThroughput(nodeId: string, edges: FactoryEdge[]): number {
+  return edges.reduce((sum, edge) => {
+    if (!isResourceEdge(edge) || edge.sourceNodeId !== nodeId) {
+      return sum;
+    }
+
+    return sum + edge.currentFlowRate;
+  }, 0);
+}
+
+function getNodePowerMetric(node: FactoryNode, edges: FactoryEdge[]): number {
+  if (node.type === 'POWER_GENERATOR') {
+    return node.powerOutput;
+  }
+
+  return edges.reduce((sum, edge) => {
+    if (!isPowerEdge(edge) || edge.targetNodeId !== node.id) {
+      return sum;
+    }
+
+    return sum + edge.currentTransferRate;
+  }, 0);
+}
+
+function getPowerLabel(node: FactoryNode): string {
+  return node.type === 'POWER_GENERATOR' ? 'Generation' : 'Power Draw';
+}
+
+function AnimatedMeter({ value, max, color }: { value: number; max: number; color: string }) {
+  const progress = useSharedValue(0);
+  const safeMax = Math.max(max, 1);
+
+  useEffect(() => {
+    progress.value = withTiming(Math.min(1, Math.max(0, value / safeMax)), { duration: 260 });
+  }, [progress, safeMax, value]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    width: `${progress.value * 100}%`,
+  }));
+
+  return (
+    <View style={styles.meterTrack}>
+      <Animated.View style={[styles.meterFill, { backgroundColor: color }, animatedStyle]} />
+    </View>
+  );
+}
+
+function Sparkline({ samples, color }: { samples: number[]; color: string }) {
+  const max = Math.max(...samples, 1);
+  return (
+    <View style={styles.sparkline}>
+      {samples.map((sample, index) => (
+        <View
+          key={`${index}_${sample.toFixed(2)}`}
+          style={[
+            styles.sparkBar,
+            {
+              backgroundColor: color,
+              height: `${Math.max(8, (sample / max) * 100)}%`,
+              opacity: 0.35 + (index + 1) / samples.length * 0.65,
+            },
+          ]}
+        />
+      ))}
+    </View>
+  );
+}
+
 export default function DockLedger() {
   const insets = useSafeAreaInsets();
   const nodes = useFactoryStore((s) => s.nodes);
+  const edges = useFactoryStore((s) => s.edges);
   const deleteNode = useFactoryStore((s) => s.deleteNode);
   const producedTotals = useFactoryStore((s) => s.producedTotals);
   const completedMissionIds = useFactoryStore((s) => s.completedMissionIds);
@@ -66,44 +155,32 @@ export default function DockLedger() {
   const getUnlockedPowerTiers = useFactoryStore((s) => s.getUnlockedPowerTiers);
   const placementNodeType = useUIStore((s) => s.placementNodeType);
   const activeTab = useUIStore((s) => s.activeTab);
+  const selectedNodeId = useUIStore((s) => s.selectedNodeId);
   const setPlacementNodeType = useUIStore((s) => s.setPlacementNodeType);
+  const setSelectedNodeId = useUIStore((s) => s.setSelectedNodeId);
   const setConnectingFromId = useUIStore((s) => s.setConnectingFromId);
   const setActiveTab = useUIStore((s) => s.setActiveTab);
 
   const nodeList = Object.values(nodes);
+  const edgeList = Object.values(edges);
+  const selectedNode = selectedNodeId ? nodes[selectedNodeId] : undefined;
   const unlockedNodeTypes = getUnlockedNodeTypes();
   const unlockedPowerTiers = getUnlockedPowerTiers();
   const currentMission = getCurrentMission(completedMissionIds);
   const completedMissions = MISSIONS.filter((mission) => completedMissionIds.includes(mission.id));
 
-  const renderNode = ({ item }: { item: FactoryNode }) => {
-    const code = getNodeCode(item.type);
-    const statusColor = getStatusColor(item.operationalStatus);
-    const efficiencyPct = Math.round(item.efficiencyRating * 100);
-
-    return (
-      <View style={styles.ledgerRow}>
-        <Text style={styles.ledgerCode}>{code}</Text>
-        <Text style={styles.ledgerName} numberOfLines={1}>{item.name}</Text>
-        <View style={[styles.statusBadge, { borderColor: statusColor }]}>
-          <Text style={[styles.statusText, { color: statusColor }]}>{item.operationalStatus}</Text>
-        </View>
-        <Text style={styles.efficiencyText}>{item.type === 'POWER_GENERATOR' ? `${item.powerOutput}MW` : `${efficiencyPct}%`}</Text>
-        <TouchableOpacity
-          style={styles.connectButton}
-          onPress={() => setConnectingFromId(item.id)}
-        >
-          <Text style={styles.connectButtonText}>Connect</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.deleteButton}
-          onPress={() => deleteNode(item.id)}
-        >
-          <Text style={styles.deleteButtonText}>🗑</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  };
+  const renderStatusPanel = () => (
+    <MachineStatusPanel
+      node={selectedNode}
+      nodeCount={nodeList.length}
+      edges={edgeList}
+      onConnect={(nodeId) => setConnectingFromId(nodeId)}
+      onDelete={(nodeId) => {
+        deleteNode(nodeId);
+        setSelectedNodeId(null);
+      }}
+    />
+  );
 
   const renderMissionPanel = () => {
     if (!currentMission) {
@@ -204,23 +281,178 @@ export default function DockLedger() {
         </ScrollView>
       )}
 
-      {activeTab === 'LEDGER' && (
-        <FlatList
-          data={nodeList}
-          keyExtractor={(item) => item.id}
-          renderItem={renderNode}
-          style={styles.ledgerList}
-          ListEmptyComponent={
-            <Text style={styles.emptyText}>No nodes placed yet.</Text>
-          }
-        />
-      )}
+      {activeTab === 'LEDGER' && renderStatusPanel()}
 
       {activeTab === 'MISSIONS' && renderMissionPanel()}
     </View>
   );
 }
 
+function MachineStatusPanel({
+  node,
+  nodeCount,
+  edges,
+  onConnect,
+  onDelete,
+}: {
+  node?: FactoryNode;
+  nodeCount: number;
+  edges: FactoryEdge[];
+  onConnect: (nodeId: string) => void;
+  onDelete: (nodeId: string) => void;
+}) {
+  const [history, setHistory] = useState<PerfSample[]>([]);
+
+  const nodeEdges = useMemo(() => {
+    if (!node) {
+      return [];
+    }
+
+    return edges.filter((edge) => edge.sourceNodeId === node.id || edge.targetNodeId === node.id);
+  }, [edges, node]);
+
+  const throughput = node ? getNodeThroughput(node.id, edges) : 0;
+  const powerMetric = node ? getNodePowerMetric(node, edges) : 0;
+
+  useEffect(() => {
+    if (!node) {
+      setHistory([]);
+      return;
+    }
+
+    setHistory((samples) => [
+      ...samples.slice(-(PERF_HISTORY_LIMIT - 1)),
+      {
+        efficiency: Math.round(node.efficiencyRating * 100),
+        power: powerMetric,
+        throughput,
+      },
+    ]);
+  }, [node?.id, node?.efficiencyRating, powerMetric, throughput]);
+
+  if (!node) {
+    return (
+      <View style={styles.emptyStatusPanel}>
+        <Text style={styles.emptyStatusTitle}>Tap a machine to inspect it</Text>
+        <Text style={styles.emptyStatusCopy}>
+          The Status tab now follows the selected machine and streams live performance, power, and flow telemetry.
+        </Text>
+        <Text style={styles.emptyStatusCopy}>Machines placed: {nodeCount}</Text>
+      </View>
+    );
+  }
+
+  const statusColor = getStatusColor(node.operationalStatus);
+  const efficiencyPct = Math.round(node.efficiencyRating * 100);
+  const powerMax = node.type === 'POWER_GENERATOR'
+    ? Math.max(node.powerOutput, 1)
+    : Math.max(node.powerRequirement, powerMetric, 1);
+  const throughputMax = Math.max(...history.map((sample) => sample.throughput), throughput, 1);
+  const powerHistory = history.map((sample) => sample.power);
+  const throughputHistory = history.map((sample) => sample.throughput);
+  const recipeOutput = node.productionRecipe?.outputs[0];
+  const recipeName = recipeOutput ? MATERIALS[recipeOutput.materialId]?.name ?? recipeOutput.materialId : 'No recipe';
+
+  return (
+    <ScrollView style={styles.statusScroll} contentContainerStyle={styles.statusContent}>
+      <View style={styles.statusHeaderRow}>
+        <View style={styles.machineIdentity}>
+          <Text style={styles.machineCode}>{getNodeCode(node.type)}</Text>
+          <View style={styles.machineTitleBlock}>
+            <Text style={styles.machineName} numberOfLines={1}>{node.name}</Text>
+            <Text style={styles.machineSubtitle}>{node.type} • Grid {node.gridX}, {node.gridY}</Text>
+          </View>
+        </View>
+        <View style={[styles.statusBadge, { borderColor: statusColor }]}>
+          <Text style={[styles.statusText, { color: statusColor }]}>{node.operationalStatus}</Text>
+        </View>
+      </View>
+
+      <View style={styles.metricGrid}>
+        <MetricCard label="Efficiency" value={`${efficiencyPct}%`} color={statusColor}>
+          <AnimatedMeter value={efficiencyPct} max={100} color={statusColor} />
+        </MetricCard>
+        <MetricCard label={getPowerLabel(node)} value={`${formatQuantity(powerMetric)} MW`} color="#FFD700">
+          <AnimatedMeter value={powerMetric} max={powerMax} color="#FFD700" />
+        </MetricCard>
+        <MetricCard label="Output Flow" value={`${formatQuantity(throughput)}/s`} color="#4CAF50">
+          <AnimatedMeter value={throughput} max={throughputMax} color="#4CAF50" />
+        </MetricCard>
+      </View>
+
+      <View style={styles.liveGraphCard}>
+        <View style={styles.liveGraphHeader}>
+          <Text style={styles.sectionLabel}>Live Fluctuations</Text>
+          <Text style={styles.liveTag}>REAL-TIME</Text>
+        </View>
+        <View style={styles.sparkRow}>
+          <View style={styles.sparkBlock}>
+            <Text style={styles.sparkLabel}>{getPowerLabel(node)}</Text>
+            <Sparkline samples={powerHistory.length ? powerHistory : [0]} color="#FFD700" />
+          </View>
+          <View style={styles.sparkBlock}>
+            <Text style={styles.sparkLabel}>Throughput</Text>
+            <Sparkline samples={throughputHistory.length ? throughputHistory : [0]} color="#4CAF50" />
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.detailRow}>
+        <Text style={styles.detailLabel}>Recipe</Text>
+        <Text style={styles.detailValue}>{recipeName}</Text>
+      </View>
+      <View style={styles.detailRow}>
+        <Text style={styles.detailLabel}>Power Capacity</Text>
+        <Text style={styles.detailValue}>
+          {node.type === 'POWER_GENERATOR' ? `${node.powerOutput} MW generated` : `${node.powerRequirement} MW required`}
+        </Text>
+      </View>
+      <View style={styles.detailRow}>
+        <Text style={styles.detailLabel}>Connections</Text>
+        <Text style={styles.detailValue}>{nodeEdges.length}</Text>
+      </View>
+
+      <View style={styles.boosterSlot}>
+        <View>
+          <Text style={styles.boosterTitle}>Booster Slot</Text>
+          <Text style={styles.boosterCopy}>Empty socket reserved for future booster modules.</Text>
+        </View>
+        <View style={styles.boosterSocket}>
+          <Text style={styles.boosterPlus}>＋</Text>
+        </View>
+      </View>
+
+      <View style={styles.statusActions}>
+        <TouchableOpacity style={styles.connectButtonLarge} onPress={() => onConnect(node.id)}>
+          <Text style={styles.connectButtonText}>Connect</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.deleteButtonLarge} onPress={() => onDelete(node.id)}>
+          <Text style={styles.deleteButtonTextLarge}>Delete</Text>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  color,
+  children,
+}: {
+  label: string;
+  value: string;
+  color: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={[styles.metricCard, { borderColor: `${color}66` }]}>
+      <Text style={styles.metricLabel}>{label}</Text>
+      <Text style={[styles.metricValue, { color }]}>{value}</Text>
+      {children}
+    </View>
+  );
+}
 
 function PowerTierList({ unlockedPowerTiers }: { unlockedPowerTiers: number[] }) {
   return (
@@ -353,29 +585,69 @@ const styles = StyleSheet.create({
     color: '#F44336',
     fontSize: 12,
   },
-  ledgerList: {
+  statusScroll: {
     flex: 1,
+  },
+  statusContent: {
     paddingHorizontal: 12,
+    paddingTop: 6,
+    paddingBottom: 14,
+    gap: 8,
   },
-  ledgerRow: {
-    flexDirection: 'row',
+  emptyStatusPanel: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  emptyStatusTitle: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  emptyStatusCopy: {
+    color: '#8B9DC3',
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  statusHeaderRow: {
     alignItems: 'center',
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1C2733',
-    gap: 6,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
   },
-  ledgerCode: {
+  machineIdentity: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: 9,
+  },
+  machineCode: {
+    backgroundColor: '#0D1117',
+    borderColor: '#00BCD4',
+    borderRadius: 8,
+    borderWidth: 1,
     color: '#00BCD4',
     fontFamily: 'monospace',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 'bold',
-    width: 32,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
   },
-  ledgerName: {
-    color: '#FFFFFF',
-    fontSize: 12,
+  machineTitleBlock: {
     flex: 1,
+  },
+  machineName: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  machineSubtitle: {
+    color: '#607D8B',
+    fontSize: 10,
+    marginTop: 1,
   },
   statusBadge: {
     borderWidth: 1,
@@ -387,29 +659,168 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '600',
   },
-  efficiencyText: {
+  metricGrid: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  metricCard: {
+    backgroundColor: '#0D1117',
+    borderRadius: 10,
+    borderWidth: 1,
+    flex: 1,
+    padding: 8,
+  },
+  metricLabel: {
+    color: '#607D8B',
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  metricValue: {
+    fontSize: 14,
+    fontWeight: '800',
+    marginTop: 3,
+  },
+  meterTrack: {
+    backgroundColor: '#1C2733',
+    borderRadius: 999,
+    height: 5,
+    marginTop: 7,
+    overflow: 'hidden',
+  },
+  meterFill: {
+    borderRadius: 999,
+    height: 5,
+  },
+  liveGraphCard: {
+    backgroundColor: '#0D1117',
+    borderColor: '#1C2733',
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 9,
+  },
+  liveGraphHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  liveTag: {
+    color: '#00BCD4',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  sparkRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  sparkBlock: {
+    flex: 1,
+  },
+  sparkLabel: {
     color: '#8B9DC3',
+    fontSize: 10,
+    marginBottom: 4,
+  },
+  sparkline: {
+    alignItems: 'flex-end',
+    backgroundColor: '#080B10',
+    borderRadius: 8,
+    flexDirection: 'row',
+    gap: 2,
+    height: 42,
+    overflow: 'hidden',
+    paddingHorizontal: 5,
+    paddingVertical: 5,
+  },
+  sparkBar: {
+    borderRadius: 999,
+    flex: 1,
+    minHeight: 3,
+  },
+  detailRow: {
+    alignItems: 'center',
+    borderBottomColor: '#1C2733',
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 5,
+  },
+  detailLabel: {
+    color: '#607D8B',
     fontSize: 11,
-    width: 34,
+    fontWeight: '700',
+  },
+  detailValue: {
+    color: '#FFFFFF',
+    flex: 1,
+    fontSize: 11,
+    marginLeft: 10,
     textAlign: 'right',
   },
-  connectButton: {
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 4,
+  boosterSlot: {
+    alignItems: 'center',
+    backgroundColor: '#0D1117',
+    borderColor: '#334155',
+    borderRadius: 12,
+    borderStyle: 'dashed',
     borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 10,
+  },
+  boosterTitle: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  boosterCopy: {
+    color: '#8B9DC3',
+    fontSize: 10,
+    marginTop: 2,
+  },
+  boosterSocket: {
+    alignItems: 'center',
     borderColor: '#00BCD4',
+    borderRadius: 18,
+    borderWidth: 1,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  boosterPlus: {
+    color: '#00BCD4',
+    fontSize: 22,
+    lineHeight: 24,
+  },
+  statusActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  connectButtonLarge: {
+    alignItems: 'center',
+    borderColor: '#00BCD4',
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    paddingVertical: 7,
+  },
+  deleteButtonLarge: {
+    alignItems: 'center',
+    borderColor: '#F44336',
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    paddingVertical: 7,
   },
   connectButtonText: {
     color: '#00BCD4',
     fontSize: 10,
+    fontWeight: '700',
   },
-  deleteButton: {
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-  },
-  deleteButtonText: {
-    fontSize: 14,
+  deleteButtonTextLarge: {
+    color: '#F44336',
+    fontSize: 10,
+    fontWeight: '700',
   },
   emptyText: {
     color: '#607D8B',
