@@ -29,10 +29,14 @@ export interface Recipe {
   energyCost: number;
 }
 
+export type ConnectionPortId = `port_${0 | 1 | 2 | 3 | 4 | 5 | 6 | 7}`;
+
 export interface BaseEdge {
   id: string;
   sourceNodeId: string;
   targetNodeId: string;
+  sourcePortId?: ConnectionPortId;
+  targetPortId?: ConnectionPortId;
   connectionType: ConnectionType;
 }
 
@@ -57,6 +61,8 @@ export interface FactoryNode {
   type: NodeType;
   gridX: number;
   gridY: number;
+  x?: number;
+  y?: number;
   inputBuffers: Record<string, { current: number; max: number }>;
   outputBuffers: Record<string, { current: number; max: number }>;
   productionRecipe?: Recipe;
