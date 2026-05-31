@@ -6,15 +6,17 @@ import { useGameLoop } from '../src/hooks/useGameLoop';
 import GridCanvas from '../src/components/GridCanvas';
 import ControlStrip from '../src/components/ControlStrip';
 import DockLedger from '../src/components/DockLedger';
-import { FactoryNode } from '../src/types';
-import { TIER_1_MATERIALS } from '../src/data/materials';
+import { FactoryNode, NodeType, Recipe } from '../src/types';
+import { MATERIALS } from '../src/data/materials';
+import { RECIPES, RECIPE_IDS_BY_NODE_TYPE } from '../src/data/recipes';
 
 export default function GameScreen() {
   useGameLoop();
 
   const addNode = useFactoryStore((s) => s.addNode);
   const connectNodes = useFactoryStore((s) => s.connectNodes);
-  const nodes = useFactoryStore((s) => s.nodes);
+  const getUnlockedMaterialIds = useFactoryStore((s) => s.getUnlockedMaterialIds);
+  const getUnlockedRecipeIds = useFactoryStore((s) => s.getUnlockedRecipeIds);
 
   const placementNodeType = useUIStore((s) => s.placementNodeType);
   const setPlacementNodeType = useUIStore((s) => s.setPlacementNodeType);
@@ -23,35 +25,87 @@ export default function GameScreen() {
   const connectingFromId = useUIStore((s) => s.connectingFromId);
   const setConnectingFromId = useUIStore((s) => s.setConnectingFromId);
 
-  function handleTapCell(gridX: number, gridY: number) {
-    if (!placementNodeType) return;
+  function buildNode(
+    nodeType: NodeType,
+    gridX: number,
+    gridY: number,
+    recipeId?: string
+  ): FactoryNode {
+    const recipe = recipeId ? RECIPES[recipeId] : undefined;
+    const recipeOutput = recipe?.outputs[0]?.materialId;
+    const recipeOutputName = recipeOutput ? MATERIALS[recipeOutput]?.name : undefined;
 
-    const newNode: FactoryNode = {
-      id: `node_${Date.now()}`,
-      name: placementNodeType,
-      type: placementNodeType,
+    return {
+      id: `node_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      name: recipeOutputName ? `${nodeType}: ${recipeOutputName}` : nodeType,
+      type: nodeType,
       gridX,
       gridY,
       inputBuffers: {},
       outputBuffers: {},
+      productionRecipe: recipe,
       efficiencyRating: 1.0,
       isOperational: true,
       cosmeticSkinId: null,
       stallTicksAccumulated: 0,
       operationalStatus: 'OPERATIONAL',
     };
+  }
 
-    addNode(newNode);
+  function placeNode(nodeType: NodeType, gridX: number, gridY: number, recipeId?: string) {
+    addNode(buildNode(nodeType, gridX, gridY, recipeId));
     setPlacementNodeType(null);
+  }
+
+  function getUnlockedRecipeOptions(nodeType: NodeType): Array<{ id: string; recipe: Recipe }> {
+    const recipeIdsForNode = RECIPE_IDS_BY_NODE_TYPE[nodeType as NonNullable<Recipe['nodeType']>] ?? [];
+    const unlockedRecipeIds = getUnlockedRecipeIds();
+
+    return recipeIdsForNode
+      .filter((recipeId) => unlockedRecipeIds.includes(recipeId))
+      .map((recipeId) => ({ id: recipeId, recipe: RECIPES[recipeId] }));
+  }
+
+  function handleTapCell(gridX: number, gridY: number) {
+    if (!placementNodeType) return;
+
+    const recipeOptions = getUnlockedRecipeOptions(placementNodeType);
+    if (recipeOptions.length === 0) {
+      placeNode(placementNodeType, gridX, gridY);
+      return;
+    }
+
+    if (recipeOptions.length === 1) {
+      placeNode(placementNodeType, gridX, gridY, recipeOptions[0].id);
+      return;
+    }
+
+    Alert.alert(
+      'Select Recipe',
+      `Choose what this ${placementNodeType.toLowerCase()} will produce:`,
+      [
+        ...recipeOptions.map(({ id, recipe }) => {
+          const outputMaterialId = recipe.outputs[0]?.materialId;
+          const outputName = outputMaterialId ? MATERIALS[outputMaterialId]?.name : id;
+          return {
+            text: outputName ?? id,
+            onPress: () => placeNode(placementNodeType, gridX, gridY, id),
+          };
+        }),
+        { text: 'Cancel', style: 'cancel' as const },
+      ]
+    );
   }
 
   function handleTapNode(nodeId: string) {
     if (connectingFromId && nodeId !== connectingFromId) {
-      // Show material picker for the pipe connection
-      const materialButtons = TIER_1_MATERIALS.map((materialId) => ({
-        text: materialId.replace(/_/g, ' '),
+      const materialButtons = getUnlockedMaterialIds().map((materialId) => ({
+        text: MATERIALS[materialId]?.name ?? materialId.replace(/_/g, ' '),
         onPress: () => {
-          connectNodes(connectingFromId, nodeId, materialId, 10);
+          const result = connectNodes(connectingFromId, nodeId, materialId, 10);
+          if (!result.success) {
+            Alert.alert('Connection Failed', result.error ?? 'Unable to connect nodes.');
+          }
           setConnectingFromId(null);
           setSelectedNodeId(null);
         },
@@ -72,7 +126,6 @@ export default function GameScreen() {
         ]
       );
     } else {
-      // Toggle selection
       if (selectedNodeId === nodeId) {
         setSelectedNodeId(null);
       } else {

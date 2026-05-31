@@ -13,6 +13,7 @@ export interface StochasticParameters {
 }
 
 export interface Recipe {
+  nodeType?: Extract<NodeType, 'REFINER' | 'ASSEMBLER'>;
   inputs: Array<{ materialId: string; ratePerSecond: number }>;
   outputs: Array<{ materialId: string; ratePerSecond: number; stochastic?: StochasticParameters }>;
   energyCost: number;
