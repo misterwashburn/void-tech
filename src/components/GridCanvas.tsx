@@ -148,8 +148,24 @@ function findHitNode(bounds: NodeBounds[], worldX: number, worldY: number): Node
 }
 
 function findHitPort(bounds: NodeBounds[], worldX: number, worldY: number, ignoredNodeId?: string): ConnectionPort | undefined {
-  const ports = bounds.flatMap((node) => node.ports).filter((port) => port.nodeId !== ignoredNodeId);
-  return ports.find((port) => Math.hypot(worldX - port.x, worldY - port.y) <= PORT_HIT_RADIUS);
+  'worklet';
+
+  for (const node of bounds) {
+    for (const port of node.ports) {
+      if (port.nodeId === ignoredNodeId) {
+        continue;
+      }
+
+      const dx = worldX - port.x;
+      const dy = worldY - port.y;
+
+      if (Math.sqrt(dx * dx + dy * dy) <= PORT_HIT_RADIUS) {
+        return port;
+      }
+    }
+  }
+
+  return undefined;
 }
 
 export default function GridCanvas({ onPlaceNode, onTapNode, onDrawConnection }: GridCanvasProps) {
