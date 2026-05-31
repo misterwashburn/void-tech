@@ -13,8 +13,10 @@ import { useUIStore } from '../store/useUIStore';
 import { FactoryNode, NodeType } from '../types';
 import { MATERIALS } from '../data/materials';
 import { MISSIONS, getCurrentMission } from '../data/missions';
+import { POWER_TIERS } from '../data/power';
 
 const NODE_TYPES: NodeType[] = [
+  'POWER_GENERATOR',
   'HARVESTER',
   'REFINER',
   'ASSEMBLER',
@@ -25,6 +27,7 @@ const NODE_TYPES: NodeType[] = [
 
 function getNodeCode(type: NodeType): string {
   switch (type) {
+    case 'POWER_GENERATOR': return 'PWR';
     case 'HARVESTER': return 'HAR';
     case 'REFINER': return 'REF';
     case 'ASSEMBLER': return 'ASM';
@@ -60,6 +63,7 @@ export default function DockLedger() {
   const producedTotals = useFactoryStore((s) => s.producedTotals);
   const completedMissionIds = useFactoryStore((s) => s.completedMissionIds);
   const getUnlockedNodeTypes = useFactoryStore((s) => s.getUnlockedNodeTypes);
+  const getUnlockedPowerTiers = useFactoryStore((s) => s.getUnlockedPowerTiers);
   const placementNodeType = useUIStore((s) => s.placementNodeType);
   const activeTab = useUIStore((s) => s.activeTab);
   const setPlacementNodeType = useUIStore((s) => s.setPlacementNodeType);
@@ -68,6 +72,7 @@ export default function DockLedger() {
 
   const nodeList = Object.values(nodes);
   const unlockedNodeTypes = getUnlockedNodeTypes();
+  const unlockedPowerTiers = getUnlockedPowerTiers();
   const currentMission = getCurrentMission(completedMissionIds);
   const completedMissions = MISSIONS.filter((mission) => completedMissionIds.includes(mission.id));
 
@@ -83,7 +88,7 @@ export default function DockLedger() {
         <View style={[styles.statusBadge, { borderColor: statusColor }]}>
           <Text style={[styles.statusText, { color: statusColor }]}>{item.operationalStatus}</Text>
         </View>
-        <Text style={styles.efficiencyText}>{efficiencyPct}%</Text>
+        <Text style={styles.efficiencyText}>{item.type === 'POWER_GENERATOR' ? `${item.powerOutput}MW` : `${efficiencyPct}%`}</Text>
         <TouchableOpacity
           style={styles.connectButton}
           onPress={() => setConnectingFromId(item.id)}
@@ -106,6 +111,7 @@ export default function DockLedger() {
         <ScrollView style={styles.missionsScroll} contentContainerStyle={styles.missionsContent}>
           <Text style={styles.missionTitle}>All missions complete</Text>
           <Text style={styles.missionObjective}>The current progression arc has been cleared.</Text>
+          <PowerTierList unlockedPowerTiers={unlockedPowerTiers} />
           <CompletedMissionList completedMissions={completedMissions} />
         </ScrollView>
       );
@@ -132,6 +138,7 @@ export default function DockLedger() {
             <View style={[styles.progressFill, { width: `${progressPct}%` }]} />
           </View>
         </View>
+        <PowerTierList unlockedPowerTiers={unlockedPowerTiers} />
         <CompletedMissionList completedMissions={completedMissions} />
       </ScrollView>
     );
@@ -210,6 +217,26 @@ export default function DockLedger() {
       )}
 
       {activeTab === 'MISSIONS' && renderMissionPanel()}
+    </View>
+  );
+}
+
+
+function PowerTierList({ unlockedPowerTiers }: { unlockedPowerTiers: number[] }) {
+  return (
+    <View style={styles.powerSection}>
+      <Text style={styles.sectionLabel}>Power Progression</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.powerTierRow}>
+        {POWER_TIERS.map((tier) => {
+          const isUnlocked = unlockedPowerTiers.includes(tier.tier);
+          return (
+            <View key={tier.tier} style={[styles.powerTierPill, !isUnlocked && styles.powerTierLocked]}>
+              <Text style={[styles.powerTierText, !isUnlocked && styles.lockedText]}>T{tier.tier}</Text>
+              <Text style={[styles.powerTierOutput, !isUnlocked && styles.lockedText]}>{tier.powerOutput}MW</Text>
+            </View>
+          );
+        })}
+      </ScrollView>
     </View>
   );
 }
@@ -453,6 +480,34 @@ const styles = StyleSheet.create({
     backgroundColor: '#00BCD4',
     borderRadius: 999,
     height: 6,
+  },
+  powerSection: {
+    marginTop: 10,
+  },
+  powerTierRow: {
+    gap: 6,
+    paddingBottom: 2,
+  },
+  powerTierPill: {
+    borderColor: '#FFD700',
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  powerTierLocked: {
+    borderColor: '#1C2733',
+    opacity: 0.45,
+  },
+  powerTierText: {
+    color: '#FFD700',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  powerTierOutput: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    marginTop: 1,
   },
   completedSection: {
     marginTop: 10,

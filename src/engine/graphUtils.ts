@@ -1,4 +1,8 @@
-import { FactoryNode, ResourceEdge } from '../types';
+import { FactoryEdge, FactoryNode } from '../types';
+
+function isResourceLike(edge: FactoryEdge): boolean {
+  return edge.connectionType === 'RESOURCE';
+}
 
 /**
  * Topological sort using Kahn's algorithm.
@@ -7,9 +11,8 @@ import { FactoryNode, ResourceEdge } from '../types';
  */
 export function topologicalSort(
   nodes: Map<string, FactoryNode>,
-  edges: Map<string, ResourceEdge>
+  edges: Map<string, FactoryEdge>
 ): string[] {
-  // Build in-degree map and adjacency list
   const inDegree = new Map<string, number>();
   const adjacency = new Map<string, string[]>();
 
@@ -19,8 +22,9 @@ export function topologicalSort(
   }
 
   for (const edge of edges.values()) {
+    if (!isResourceLike(edge)) continue;
+
     const { sourceNodeId, targetNodeId } = edge;
-    // Only consider edges between nodes that exist in the map
     if (!nodes.has(sourceNodeId) || !nodes.has(targetNodeId)) continue;
 
     inDegree.set(targetNodeId, (inDegree.get(targetNodeId) ?? 0) + 1);
@@ -29,7 +33,6 @@ export function topologicalSort(
     adjacency.set(sourceNodeId, neighbors);
   }
 
-  // Initialize queue with all nodes that have in-degree 0
   const queue: string[] = [];
   for (const [nodeId, degree] of inDegree.entries()) {
     if (degree === 0) {
@@ -61,28 +64,26 @@ export function topologicalSort(
 }
 
 /**
- * Returns true if adding an edge from newSourceId to newTargetId
- * would create a cycle in the current graph.
- *
- * Uses DFS reachability: can we reach newSourceId from newTargetId
- * via existing edges? If yes, adding the new edge closes a cycle.
+ * Returns true if adding a resource edge from newSourceId to newTargetId
+ * would create a cycle in the current resource graph. Power lines are ignored
+ * because they are a separate distribution network.
  */
 export function wouldCreateCycle(
   nodes: Map<string, FactoryNode>,
-  edges: Map<string, ResourceEdge>,
+  edges: Map<string, FactoryEdge>,
   newSourceId: string,
   newTargetId: string
 ): boolean {
-  // If source === target, it's immediately a self-loop (cycle)
   if (newSourceId === newTargetId) return true;
 
-  // Build adjacency from existing edges (without the new edge)
   const adjacency = new Map<string, string[]>();
   for (const nodeId of nodes.keys()) {
     adjacency.set(nodeId, []);
   }
 
   for (const edge of edges.values()) {
+    if (!isResourceLike(edge)) continue;
+
     const { sourceNodeId, targetNodeId } = edge;
     if (!nodes.has(sourceNodeId) || !nodes.has(targetNodeId)) continue;
     const neighbors = adjacency.get(sourceNodeId) ?? [];
@@ -90,7 +91,6 @@ export function wouldCreateCycle(
     adjacency.set(sourceNodeId, neighbors);
   }
 
-  // DFS from newTargetId: can we reach newSourceId?
   const visited = new Set<string>();
   const stack: string[] = [newTargetId];
 

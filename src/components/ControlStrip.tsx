@@ -12,7 +12,7 @@ export default function ControlStrip() {
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <View style={styles.row}>
         <Text style={styles.title}>VOID-TECH</Text>
-        <Text style={styles.energy}>⚡ {netEnergy.toFixed(1)} GJ</Text>
+        <Text style={styles.energy}>⚡ {netEnergy.toFixed(1)} MW ({consumedEnergy.toFixed(1)} / {availableEnergy.toFixed(1)})</Text>
       </View>
     </SafeAreaView>
   );
