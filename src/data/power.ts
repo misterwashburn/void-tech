@@ -28,6 +28,7 @@ const BASE_POWER_REQUIREMENTS: Record<NodeType, number> = {
   ASSEMBLER: 32,
   STORAGE: 2,
   SINK: 1,
+  RELAY: 12,
   FEEDBACK_REGULATOR: 45,
 };
 

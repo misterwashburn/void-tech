@@ -104,6 +104,8 @@ function getNodeCode(type: FactoryNode['type']): string {
       return 'STO';
     case 'SINK':
       return 'SNK';
+    case 'RELAY':
+      return 'RLY';
     case 'FEEDBACK_REGULATOR':
       return 'FBK';
     default:

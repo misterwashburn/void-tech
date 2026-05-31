@@ -1,5 +1,6 @@
 import { getCurrentMission, getUnlockedProgression, INITIAL_UNLOCKS, MISSIONS } from '../src/data/missions';
 import { useFactoryStore } from '../src/store/useFactoryStore';
+import { NARRATIVE_BASELINE, RELAY_COMMUNICATIONS, VOID_TYPES } from '../src/data/progression';
 import { TickResult } from '../src/types';
 
 describe('mission progression', () => {
@@ -7,6 +8,7 @@ describe('mission progression', () => {
     const unlocked = getUnlockedProgression([]);
 
     expect(unlocked.nodeTypes).toEqual(INITIAL_UNLOCKS.nodeTypes);
+    expect(unlocked.nodeTypes).toContain('RELAY');
     expect(unlocked.materialIds).toEqual(['void_ore']);
     expect(unlocked.recipeIds).toEqual([]);
     expect(getCurrentMission([])?.id).toBe('mission_void_ore');
@@ -26,6 +28,41 @@ describe('mission progression', () => {
     expect(unlocked.recipeIds).toContain('assemble_logic_substrate');
     expect(unlocked.materialIds).toContain('logic_substrate');
     expect(getCurrentMission(['mission_void_ore', 'mission_plasteel'])?.id).toBe('mission_polymer');
+  });
+
+  it('defines the 2350 void-tech narrative and ten tiered void types', () => {
+    expect(NARRATIVE_BASELINE).toContain('twenty three fifty');
+    expect(VOID_TYPES).toHaveLength(10);
+    expect(VOID_TYPES.map((voidType) => voidType.tier)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(VOID_TYPES.map((voidType) => voidType.baseType)).toEqual([
+      'ORE',
+      'ORE',
+      'ENERGY',
+      'FLUID',
+      'ORE',
+      'ORE',
+      'ENERGY',
+      'FLUID',
+      'ENERGY',
+      'ORE',
+    ]);
+  });
+
+  it('scales relay communication windows from seconds to days', () => {
+    expect(RELAY_COMMUNICATIONS).toHaveLength(9);
+    expect(RELAY_COMMUNICATIONS[0]).toMatchObject({ fromTier: 1, toTier: 2, durationSeconds: 45 });
+    expect(RELAY_COMMUNICATIONS[RELAY_COMMUNICATIONS.length - 1]).toMatchObject({ fromTier: 9, toTier: 10, durationSeconds: 259200 });
+    expect(RELAY_COMMUNICATIONS.map((communication) => communication.durationSeconds)).toEqual(
+      [...RELAY_COMMUNICATIONS]
+        .map((communication) => communication.durationSeconds)
+        .sort((a, b) => a - b)
+    );
+  });
+
+  it('attaches relay discovery metadata to each culminating tier mission before tier 10', () => {
+    expect(MISSIONS.map((mission) => mission.tier)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(MISSIONS.slice(0, 9).every((mission) => mission.relayCommunication)).toBe(true);
+    expect(MISSIONS[9].relayCommunication).toBeUndefined();
   });
 
   it('returns null current mission after the full mission chain is completed', () => {

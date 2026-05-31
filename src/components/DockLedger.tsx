@@ -20,8 +20,9 @@ import { FactoryEdge, FactoryNode, NodeType, PowerEdge, ResourceEdge } from '../
 import { MATERIALS } from '../data/materials';
 import { MISSIONS, getCurrentMission } from '../data/missions';
 import { POWER_TIERS } from '../data/power';
+import { VOID_TYPES, getVoidTypeForTier } from '../data/progression';
 
-type BuildCategoryId = 'POWER' | 'VOID_HARVESTING' | 'MANUFACTURING' | 'REFINING' | 'TRANSPORTING';
+type BuildCategoryId = 'POWER' | 'VOID_HARVESTING' | 'MANUFACTURING' | 'REFINING' | 'TRANSPORTING' | 'COMMUNICATIONS';
 
 type BuildMenuItem =
   | { kind: 'NODE'; nodeType: NodeType }
@@ -58,6 +59,12 @@ const BUILD_CATEGORIES: Array<{ id: BuildCategoryId; label: string; description:
     description: 'Conveyance endpoints and material routing support.',
     nodeTypes: ['STORAGE', 'SINK'],
   },
+  {
+    id: 'COMMUNICATIONS',
+    label: 'Comms',
+    description: 'Relay tier discoveries back to Earth to authorize new void work.',
+    nodeTypes: ['RELAY'],
+  },
 ];
 
 const PERF_HISTORY_LIMIT = 18;
@@ -76,6 +83,7 @@ function getNodeCode(type: NodeType): string {
     case 'ASSEMBLER': return 'ASM';
     case 'STORAGE': return 'STO';
     case 'SINK': return 'SNK';
+    case 'RELAY': return 'RLY';
     case 'FEEDBACK_REGULATOR': return 'FBK';
     default: return '???';
   }
@@ -90,6 +98,7 @@ function getNodeDisplayName(type: NodeType): string {
     case 'ASSEMBLER': return 'Assembler';
     case 'STORAGE': return 'Storage';
     case 'SINK': return 'Output Sink';
+    case 'RELAY': return 'Relay';
     case 'FEEDBACK_REGULATOR': return 'Feedback Regulator';
     default: return type;
   }
@@ -256,6 +265,10 @@ export default function DockLedger() {
     }
 
     const materialName = MATERIALS[currentMission.requirement.materialId]?.name ?? currentMission.requirement.materialId;
+    const tierVoidType = getVoidTypeForTier(currentMission.tier);
+    const discoveredVoidType = currentMission.discoversVoidTypeId
+      ? VOID_TYPES.find((voidType) => voidType.id === currentMission.discoversVoidTypeId)
+      : undefined;
     const currentAmount = producedTotals[currentMission.requirement.materialId] ?? 0;
     const targetAmount = currentMission.requirement.quantity;
     const progressPct = Math.min(100, Math.round((currentAmount / targetAmount) * 100));
@@ -269,6 +282,18 @@ export default function DockLedger() {
             <Text style={styles.missionPercent}>{progressPct}%</Text>
           </View>
           <Text style={styles.missionObjective}>{currentMission.objective}</Text>
+          {tierVoidType && (
+            <Text style={styles.missionLore}>
+              T{currentMission.tier} {tierVoidType.baseType}: {tierVoidType.name} — {tierVoidType.discoverySummary}
+            </Text>
+          )}
+          <Text style={styles.missionLore}>{currentMission.narrativeBeat}</Text>
+          {currentMission.relayCommunication && (
+            <Text style={styles.missionRelay}>
+              Relay to Earth: {currentMission.relayCommunication.durationLabel}
+              {discoveredVoidType ? ` to unlock T${discoveredVoidType.tier} ${discoveredVoidType.name}` : ''}
+            </Text>
+          )}
           <Text style={styles.missionRequirement}>
             Produce {formatQuantity(currentAmount)} / {formatQuantity(targetAmount)} {materialName}
           </Text>
@@ -1070,6 +1095,19 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 15,
     marginTop: 5,
+  },
+  missionLore: {
+    color: '#90A4AE',
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 7,
+  },
+  missionRelay: {
+    color: '#80DEEA',
+    fontSize: 11,
+    fontWeight: '700',
+    lineHeight: 15,
+    marginTop: 7,
   },
   missionRequirement: {
     color: '#FFFFFF',

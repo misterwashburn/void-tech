@@ -5,6 +5,7 @@ export type NodeType =
   | 'ASSEMBLER'
   | 'STORAGE'
   | 'SINK'
+  | 'RELAY'
   | 'FEEDBACK_REGULATOR';
 
 export type ConnectionType = 'RESOURCE' | 'POWER';

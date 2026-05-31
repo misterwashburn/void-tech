@@ -1,4 +1,5 @@
 import { NodeType, PowerTier } from '../types';
+import { ProgressionTier, getRelayCommunicationForTier } from './progression';
 
 export interface MissionRequirement {
   materialId: string;
@@ -14,14 +15,18 @@ export interface MissionUnlocks {
 
 export interface MissionDefinition {
   id: string;
+  tier: Exclude<ProgressionTier, 0>;
   title: string;
   objective: string;
   requirement: MissionRequirement;
   unlocks: MissionUnlocks;
+  discoversVoidTypeId?: string;
+  relayCommunication?: ReturnType<typeof getRelayCommunicationForTier>;
+  narrativeBeat: string;
 }
 
 export const INITIAL_UNLOCKS: Required<MissionUnlocks> = {
-  nodeTypes: ['POWER_GENERATOR', 'HARVESTER', 'SINK', 'STORAGE'],
+  nodeTypes: ['POWER_GENERATOR', 'HARVESTER', 'SINK', 'STORAGE', 'RELAY'],
   materialIds: ['void_ore'],
   recipeIds: [],
   powerTiers: [1],
@@ -30,9 +35,13 @@ export const INITIAL_UNLOCKS: Required<MissionUnlocks> = {
 export const MISSIONS: MissionDefinition[] = [
   {
     id: 'mission_void_ore',
+    tier: 1,
     title: 'Bootstrap Extraction',
-    objective: 'Route Void Ore into the grid to prove the site can sustain basic throughput.',
+    objective: 'Route Umbralite-class Void Ore into the grid, then send the extraction proof to Earth through the Relay.',
     requirement: { materialId: 'void_ore', quantity: 50 },
+    discoversVoidTypeId: 'nullglass_ore',
+    relayCommunication: getRelayCommunicationForTier(1),
+    narrativeBeat: 'The first stable seam proves void technology can be harvested outside the solar system. Earth answers with authorization to search for Nullglass Ore.',
     unlocks: {
       nodeTypes: ['REFINER'],
       recipeIds: ['smelt_plasteel'],
@@ -42,9 +51,13 @@ export const MISSIONS: MissionDefinition[] = [
   },
   {
     id: 'mission_plasteel',
-    title: 'Pressure Hull Stockpile',
-    objective: 'Smelt enough Plasteel Matrix to reinforce the first expansion frame.',
+    tier: 2,
+    title: 'Nullglass Pressure Hulls',
+    objective: 'Smelt enough Plasteel Matrix to reinforce the station for Nullglass survey loads and relay the findings home.',
     requirement: { materialId: 'plasteel', quantity: 40 },
+    discoversVoidTypeId: 'vesper_charge',
+    relayCommunication: getRelayCommunicationForTier(2),
+    narrativeBeat: 'Nullglass refraction exposes an energy-phase signature in the dark around the station: Vesper Charge.',
     unlocks: {
       materialIds: ['hydrocarbon', 'polymer_sheet'],
       recipeIds: ['refine_polymer'],
@@ -53,9 +66,13 @@ export const MISSIONS: MissionDefinition[] = [
   },
   {
     id: 'mission_polymer',
-    title: 'Flexible Substrates',
-    objective: 'Produce Polymer Sheets for insulated circuitry and machine housings.',
+    tier: 3,
+    title: 'Vesper Insulation',
+    objective: 'Produce Polymer Sheets for insulated circuitry capable of surviving Vesper Charge tests.',
     requirement: { materialId: 'polymer_sheet', quantity: 60 },
+    discoversVoidTypeId: 'ecliptic_brine',
+    relayCommunication: getRelayCommunicationForTier(3),
+    narrativeBeat: 'The first directed void current condenses a black fluid along the test rig: Ecliptic Brine.',
     unlocks: {
       nodeTypes: ['ASSEMBLER'],
       recipeIds: ['assemble_logic_substrate'],
@@ -65,9 +82,13 @@ export const MISSIONS: MissionDefinition[] = [
   },
   {
     id: 'mission_logic',
-    title: 'Logic Backbone',
-    objective: 'Assemble Logic Substrates to unlock reactive alloys.',
+    tier: 4,
+    title: 'Ecliptic Logic Backbone',
+    objective: 'Assemble Logic Substrates to model Ecliptic Brine behavior and prepare reactive alloys.',
     requirement: { materialId: 'logic_substrate', quantity: 30 },
+    discoversVoidTypeId: 'paradoxite_ore',
+    relayCommunication: getRelayCommunicationForTier(4),
+    narrativeBeat: 'Brine simulations split into contradictory but valid outputs, pointing Earth toward Paradoxite Ore.',
     unlocks: {
       materialIds: ['catalyst', 'charged_alloy'],
       recipeIds: ['forge_charged_alloy'],
@@ -76,9 +97,13 @@ export const MISSIONS: MissionDefinition[] = [
   },
   {
     id: 'mission_alloy',
-    title: 'Charged Metallurgy',
-    objective: 'Forge Charged Alloy for high-density compute tooling.',
+    tier: 5,
+    title: 'Paradox Metallurgy',
+    objective: 'Forge Charged Alloy for high-density compute tooling that can survive Paradoxite branching.',
     requirement: { materialId: 'charged_alloy', quantity: 30 },
+    discoversVoidTypeId: 'horizon_shard',
+    relayCommunication: getRelayCommunicationForTier(5),
+    narrativeBeat: 'Paradoxite lattice failures expose a harder boundary material: Horizon Shard.',
     unlocks: {
       materialIds: ['plasma', 'quantum_cpu'],
       recipeIds: ['synthesize_quantum_cpu'],
@@ -87,9 +112,13 @@ export const MISSIONS: MissionDefinition[] = [
   },
   {
     id: 'mission_quantum_cpu',
-    title: 'Quantum Control Plane',
-    objective: 'Fabricate Quantum CPUs to stabilize exotic extraction.',
+    tier: 6,
+    title: 'Horizon Control Plane',
+    objective: 'Fabricate Quantum CPUs to stabilize Horizon Shard extraction and parse the next void band.',
     requirement: { materialId: 'quantum_cpu', quantity: 15 },
+    discoversVoidTypeId: 'aurora_null',
+    relayCommunication: getRelayCommunicationForTier(6),
+    narrativeBeat: 'Horizon Shard containment reveals a silent energy ribbon that Earth designates Aurora Null.',
     unlocks: {
       materialIds: ['raw_exotic', 'chronal_fluid'],
       recipeIds: ['extract_chronal_fluid'],
@@ -99,9 +128,13 @@ export const MISSIONS: MissionDefinition[] = [
   },
   {
     id: 'mission_chronal',
-    title: 'Temporal Coolant Loop',
-    objective: 'Extract Chronal Fluid before attempting tachyon containment.',
+    tier: 7,
+    title: 'Aurora Coolant Loop',
+    objective: 'Extract Chronal Fluid before attempting to cool Aurora Null containment drift.',
     requirement: { materialId: 'chronal_fluid', quantity: 20 },
+    discoversVoidTypeId: 'chronosilt',
+    relayCommunication: getRelayCommunicationForTier(7),
+    narrativeBeat: 'Aurora Null forces coolant to arrive before it is pumped, confirming Chronosilt as a fluid void type.',
     unlocks: {
       recipeIds: ['forge_tachyon_core'],
       materialIds: ['tachyon_core', 'probability_ore', 'flux_filament'],
@@ -110,9 +143,13 @@ export const MISSIONS: MissionDefinition[] = [
   },
   {
     id: 'mission_tachyon',
-    title: 'Containment Cores',
-    objective: 'Forge Tachyon Cores and prepare probabilistic filament processing.',
+    tier: 8,
+    title: 'Chronosilt Containment Cores',
+    objective: 'Forge Tachyon Cores and prepare probabilistic filament processing around Chronosilt flow.',
     requirement: { materialId: 'tachyon_core', quantity: 10 },
+    discoversVoidTypeId: 'apex_echo',
+    relayCommunication: getRelayCommunicationForTier(8),
+    narrativeBeat: 'Chronosilt containment resonates with a repeating singularity wake: Apex Echo.',
     unlocks: {
       recipeIds: ['process_flux_filament'],
       powerTiers: [9],
@@ -120,9 +157,13 @@ export const MISSIONS: MissionDefinition[] = [
   },
   {
     id: 'mission_flux',
-    title: 'Flux Weaving',
-    objective: 'Process Flux Filament for singularity drive construction.',
+    tier: 9,
+    title: 'Apex Flux Weaving',
+    objective: 'Process Flux Filament for singularity drive construction and relay Apex Echo proof to Earth.',
     requirement: { materialId: 'flux_filament', quantity: 25 },
+    discoversVoidTypeId: 'genesis_cinder',
+    relayCommunication: getRelayCommunicationForTier(9),
+    narrativeBeat: 'Apex Echo resolves into the final known material signature: Genesis Cinder.',
     unlocks: {
       recipeIds: ['build_singularity_driver'],
       materialIds: ['singularity_driver'],
@@ -131,9 +172,11 @@ export const MISSIONS: MissionDefinition[] = [
   },
   {
     id: 'mission_singularity',
-    title: 'Singularity Driver',
-    objective: 'Build the first Singularity Driver and complete the current progression arc.',
+    tier: 10,
+    title: 'Genesis Driver',
+    objective: 'Build the first Singularity Driver with Genesis Cinder-class tooling and complete the current progression arc.',
     requirement: { materialId: 'singularity_driver', quantity: 5 },
+    narrativeBeat: 'Humanity now has a tool that can reshape the void rather than merely survive it.',
     unlocks: {},
   },
 ];
