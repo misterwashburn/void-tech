@@ -14,6 +14,9 @@ function makeNode(overrides: Partial<FactoryNode> & { id: string }): FactoryNode
     inputBuffers: overrides.inputBuffers ?? {},
     outputBuffers: overrides.outputBuffers ?? {},
     productionRecipe: overrides.productionRecipe,
+    powerRequirement: overrides.powerRequirement ?? 0,
+    powerOutput: overrides.powerOutput ?? 0,
+    powerTier: overrides.powerTier,
     efficiencyRating: overrides.efficiencyRating ?? 1.0,
     isOperational: overrides.isOperational ?? true,
     cosmeticSkinId: overrides.cosmeticSkinId ?? null,
@@ -27,6 +30,7 @@ function makeEdge(overrides: Partial<ResourceEdge> & { id: string; sourceNodeId:
     id: overrides.id,
     sourceNodeId: overrides.sourceNodeId,
     targetNodeId: overrides.targetNodeId,
+    connectionType: 'RESOURCE',
     materialId: overrides.materialId ?? 'mat_a',
     maxCapacityRate: overrides.maxCapacityRate ?? 100,
     currentFlowRate: overrides.currentFlowRate ?? 0,
@@ -310,6 +314,59 @@ describe('SimulationEngine', () => {
     expect(typeof ed.edgeId).toBe('string');
     expect(typeof ed.actualFlowRate).toBe('number');
   });
+
+  it('requires a power line before machines can operate', () => {
+    const generator = makeNode({
+      id: 'p1',
+      type: 'POWER_GENERATOR',
+      powerOutput: 35,
+      powerTier: 1,
+    });
+    const harvester = makeNode({
+      id: 'h1',
+      type: 'HARVESTER',
+      powerRequirement: 8,
+    });
+    const nodes = new Map([['p1', generator], ['h1', harvester]]);
+    const edges = new Map();
+
+    const result = evaluateTick(nodes, edges);
+
+    expect(result.globalEnergyBalance.production).toBe(35);
+    expect(result.nodeDeltas.get('h1')?.calculatedEfficiency).toBe(0);
+    expect(result.nodeDeltas.get('h1')?.operationalStatus).toBe('STARVED');
+  });
+
+  it('powers machines through POWER edges without adding resource graph cycles', () => {
+    const generator = makeNode({
+      id: 'p1',
+      type: 'POWER_GENERATOR',
+      powerOutput: 35,
+      powerTier: 1,
+    });
+    const harvester = makeNode({
+      id: 'h1',
+      type: 'HARVESTER',
+      powerRequirement: 8,
+    });
+    const nodes = new Map([['p1', generator], ['h1', harvester]]);
+    const powerEdge = {
+      id: 'pow1',
+      sourceNodeId: 'p1',
+      targetNodeId: 'h1',
+      connectionType: 'POWER' as const,
+      maxTransferRate: 35,
+      currentTransferRate: 0,
+    };
+    const edges = new Map([['pow1', powerEdge]]);
+
+    const result = evaluateTick(nodes, edges);
+
+    expect(result.nodeDeltas.get('h1')?.calculatedEfficiency).toBe(1);
+    expect(result.edgeDeltas.get('pow1')?.actualFlowRate).toBe(8);
+    expect(topologicalSort(nodes, edges)).toEqual(['p1', 'h1']);
+  });
+
 });
 
 describe('boxMullerTransform', () => {

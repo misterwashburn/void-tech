@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { FactoryNode, NodeType, ResourceEdge, TickResult } from '../types';
+import { FactoryEdge, FactoryNode, NodeType, PowerTier, ResourceEdge, TickResult } from '../types';
 import { wouldCreateCycle } from '../engine/graphUtils';
 import { getCurrentMission, getUnlockedProgression } from '../data/missions';
 
@@ -7,13 +7,12 @@ interface FactoryStoreState {
   id: string;
   isUnlocked: boolean;
   nodes: Record<string, FactoryNode>;
-  edges: Record<string, ResourceEdge>;
+  edges: Record<string, FactoryEdge>;
   availableEnergy: number;
   consumedEnergy: number;
   producedTotals: Record<string, number>;
   completedMissionIds: string[];
 
-  // Actions
   addNode: (node: FactoryNode) => void;
   deleteNode: (nodeId: string) => void;
   connectNodes: (
@@ -22,18 +21,27 @@ interface FactoryStoreState {
     materialId: string,
     maxCapacityRate: number
   ) => { success: boolean; error?: string };
+  connectPower: (
+    sourceNodeId: string,
+    targetNodeId: string,
+    maxTransferRate: number
+  ) => { success: boolean; error?: string };
   applyTickResult: (result: TickResult, tickSeconds?: number) => void;
 
-  // Helpers
   getNodesMap: () => Map<string, FactoryNode>;
-  getEdgesMap: () => Map<string, ResourceEdge>;
+  getEdgesMap: () => Map<string, FactoryEdge>;
   getUnlockedNodeTypes: () => NodeType[];
   getUnlockedMaterialIds: () => string[];
   getUnlockedRecipeIds: () => string[];
+  getUnlockedPowerTiers: () => PowerTier[];
 }
 
 function recordToMap<V>(record: Record<string, V>): Map<string, V> {
   return new Map(Object.entries(record));
+}
+
+function isResourceEdge(edge: FactoryEdge): edge is ResourceEdge {
+  return edge.connectionType === 'RESOURCE';
 }
 
 function completeAvailableMissions(
@@ -64,7 +72,7 @@ export const useFactoryStore = create<FactoryStoreState>((set, get) => ({
   isUnlocked: true,
   nodes: {},
   edges: {},
-  availableEnergy: 1000,
+  availableEnergy: 0,
   consumedEnergy: 0,
   producedTotals: {},
   completedMissionIds: [],
@@ -73,6 +81,13 @@ export const useFactoryStore = create<FactoryStoreState>((set, get) => ({
     const unlockedNodeTypes = get().getUnlockedNodeTypes();
     if (!unlockedNodeTypes.includes(node.type)) {
       return;
+    }
+
+    if (node.type === 'POWER_GENERATOR') {
+      const unlockedPowerTiers = get().getUnlockedPowerTiers();
+      if (!node.powerTier || !unlockedPowerTiers.includes(node.powerTier)) {
+        return;
+      }
     }
 
     set((state) => ({
@@ -85,7 +100,7 @@ export const useFactoryStore = create<FactoryStoreState>((set, get) => ({
       const newNodes = { ...state.nodes };
       delete newNodes[nodeId];
 
-      const newEdges: Record<string, ResourceEdge> = {};
+      const newEdges: Record<string, FactoryEdge> = {};
       for (const [edgeId, edge] of Object.entries(state.edges)) {
         if (edge.sourceNodeId !== nodeId && edge.targetNodeId !== nodeId) {
           newEdges[edgeId] = edge;
@@ -125,6 +140,7 @@ export const useFactoryStore = create<FactoryStoreState>((set, get) => ({
       id: edgeId,
       sourceNodeId,
       targetNodeId,
+      connectionType: 'RESOURCE',
       materialId,
       maxCapacityRate,
       currentFlowRate: 0,
@@ -132,6 +148,46 @@ export const useFactoryStore = create<FactoryStoreState>((set, get) => ({
 
     set((s) => ({
       edges: { ...s.edges, [edgeId]: newEdge },
+    }));
+
+    return { success: true };
+  },
+
+  connectPower(
+    sourceNodeId: string,
+    targetNodeId: string,
+    maxTransferRate: number
+  ): { success: boolean; error?: string } {
+    const state = get();
+    const sourceNode = state.nodes[sourceNodeId];
+    const targetNode = state.nodes[targetNodeId];
+
+    if (!sourceNode) {
+      return { success: false, error: `Source node '${sourceNodeId}' does not exist` };
+    }
+    if (!targetNode) {
+      return { success: false, error: `Target node '${targetNodeId}' does not exist` };
+    }
+    if (sourceNode.type !== 'POWER_GENERATOR') {
+      return { success: false, error: 'Power lines must start from a generator' };
+    }
+    if (targetNode.type === 'POWER_GENERATOR') {
+      return { success: false, error: 'Power generators do not consume power lines' };
+    }
+
+    const edgeId = `power_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    set((s) => ({
+      edges: {
+        ...s.edges,
+        [edgeId]: {
+          id: edgeId,
+          sourceNodeId,
+          targetNodeId,
+          connectionType: 'POWER',
+          maxTransferRate,
+          currentTransferRate: 0,
+        },
+      },
     }));
 
     return { success: true };
@@ -146,7 +202,6 @@ export const useFactoryStore = create<FactoryStoreState>((set, get) => ({
       for (const delta of result.nodeDeltas.values()) {
         const existing = newNodes[delta.nodeId];
         if (existing) {
-          // Compute updated stall ticks based on status
           let stallTicks = existing.stallTicksAccumulated;
           const outputBufferValues = Object.values(existing.outputBuffers);
           const isOutputSaturated =
@@ -170,7 +225,11 @@ export const useFactoryStore = create<FactoryStoreState>((set, get) => ({
 
       for (const delta of result.edgeDeltas.values()) {
         const existing = newEdges[delta.edgeId];
-        if (existing) {
+        if (!existing) {
+          continue;
+        }
+
+        if (isResourceEdge(existing)) {
           newEdges[delta.edgeId] = {
             ...existing,
             currentFlowRate: delta.actualFlowRate,
@@ -181,12 +240,18 @@ export const useFactoryStore = create<FactoryStoreState>((set, get) => ({
             newProducedTotals[existing.materialId] =
               (newProducedTotals[existing.materialId] ?? 0) + producedAmount;
           }
+        } else {
+          newEdges[delta.edgeId] = {
+            ...existing,
+            currentTransferRate: delta.actualFlowRate,
+          };
         }
       }
 
       return {
         nodes: newNodes,
         edges: newEdges,
+        availableEnergy: result.globalEnergyBalance.production,
         consumedEnergy: result.globalEnergyBalance.consumption,
         producedTotals: newProducedTotals,
         completedMissionIds: completeAvailableMissions(
@@ -201,7 +266,7 @@ export const useFactoryStore = create<FactoryStoreState>((set, get) => ({
     return recordToMap(get().nodes);
   },
 
-  getEdgesMap(): Map<string, ResourceEdge> {
+  getEdgesMap(): Map<string, FactoryEdge> {
     return recordToMap(get().edges);
   },
 
@@ -215,5 +280,9 @@ export const useFactoryStore = create<FactoryStoreState>((set, get) => ({
 
   getUnlockedRecipeIds(): string[] {
     return getUnlockedProgression(get().completedMissionIds).recipeIds;
+  },
+
+  getUnlockedPowerTiers(): PowerTier[] {
+    return getUnlockedProgression(get().completedMissionIds).powerTiers;
   },
 }));

@@ -43,6 +43,7 @@ describe('mission store integration', () => {
           id: 'e1',
           sourceNodeId: 'h1',
           targetNodeId: 's1',
+          connectionType: 'RESOURCE',
           materialId: 'void_ore',
           maxCapacityRate: 10,
           currentFlowRate: 0,

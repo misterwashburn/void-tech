@@ -6,17 +6,20 @@ import { useGameLoop } from '../src/hooks/useGameLoop';
 import GridCanvas from '../src/components/GridCanvas';
 import ControlStrip from '../src/components/ControlStrip';
 import DockLedger from '../src/components/DockLedger';
-import { FactoryNode, NodeType, Recipe } from '../src/types';
+import { FactoryNode, NodeType, PowerTier, Recipe } from '../src/types';
 import { MATERIALS } from '../src/data/materials';
 import { RECIPES, RECIPE_IDS_BY_NODE_TYPE } from '../src/data/recipes';
+import { getDefaultPowerRequirement, getPowerTierDefinition } from '../src/data/power';
 
 export default function GameScreen() {
   useGameLoop();
 
   const addNode = useFactoryStore((s) => s.addNode);
   const connectNodes = useFactoryStore((s) => s.connectNodes);
+  const connectPower = useFactoryStore((s) => s.connectPower);
   const getUnlockedMaterialIds = useFactoryStore((s) => s.getUnlockedMaterialIds);
   const getUnlockedRecipeIds = useFactoryStore((s) => s.getUnlockedRecipeIds);
+  const getUnlockedPowerTiers = useFactoryStore((s) => s.getUnlockedPowerTiers);
 
   const placementNodeType = useUIStore((s) => s.placementNodeType);
   const setPlacementNodeType = useUIStore((s) => s.setPlacementNodeType);
@@ -29,21 +32,27 @@ export default function GameScreen() {
     nodeType: NodeType,
     gridX: number,
     gridY: number,
-    recipeId?: string
+    recipeId?: string,
+    powerTier?: PowerTier
   ): FactoryNode {
     const recipe = recipeId ? RECIPES[recipeId] : undefined;
+    const selectedPowerTier = nodeType === 'POWER_GENERATOR' ? powerTier ?? 1 : undefined;
+    const powerDefinition = selectedPowerTier ? getPowerTierDefinition(selectedPowerTier) : undefined;
     const recipeOutput = recipe?.outputs[0]?.materialId;
     const recipeOutputName = recipeOutput ? MATERIALS[recipeOutput]?.name : undefined;
 
     return {
       id: `node_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-      name: recipeOutputName ? `${nodeType}: ${recipeOutputName}` : nodeType,
+      name: powerDefinition?.name ?? (recipeOutputName ? `${nodeType}: ${recipeOutputName}` : nodeType),
       type: nodeType,
       gridX,
       gridY,
       inputBuffers: {},
       outputBuffers: {},
       productionRecipe: recipe,
+      powerRequirement: getDefaultPowerRequirement(nodeType, recipe),
+      powerOutput: powerDefinition?.powerOutput ?? 0,
+      powerTier: selectedPowerTier,
       efficiencyRating: 1.0,
       isOperational: true,
       cosmeticSkinId: null,
@@ -52,8 +61,8 @@ export default function GameScreen() {
     };
   }
 
-  function placeNode(nodeType: NodeType, gridX: number, gridY: number, recipeId?: string) {
-    addNode(buildNode(nodeType, gridX, gridY, recipeId));
+  function placeNode(nodeType: NodeType, gridX: number, gridY: number, recipeId?: string, powerTier?: PowerTier) {
+    addNode(buildNode(nodeType, gridX, gridY, recipeId, powerTier));
     setPlacementNodeType(null);
   }
 
@@ -68,6 +77,30 @@ export default function GameScreen() {
 
   function handleTapCell(gridX: number, gridY: number) {
     if (!placementNodeType) return;
+
+    if (placementNodeType === 'POWER_GENERATOR') {
+      const powerTierOptions = getUnlockedPowerTiers();
+      if (powerTierOptions.length === 1) {
+        placeNode(placementNodeType, gridX, gridY, undefined, powerTierOptions[0]);
+        return;
+      }
+
+      Alert.alert(
+        'Select Generator Tier',
+        'Choose the generator to place:',
+        [
+          ...powerTierOptions.map((tier) => {
+            const definition = getPowerTierDefinition(tier);
+            return {
+              text: `T${tier} ${definition.name}`,
+              onPress: () => placeNode(placementNodeType, gridX, gridY, undefined, tier),
+            };
+          }),
+          { text: 'Cancel', style: 'cancel' as const },
+        ]
+      );
+      return;
+    }
 
     const recipeOptions = getUnlockedRecipeOptions(placementNodeType);
     if (recipeOptions.length === 0) {
@@ -99,7 +132,26 @@ export default function GameScreen() {
 
   function handleTapNode(nodeId: string) {
     if (connectingFromId && nodeId !== connectingFromId) {
-      const materialButtons = getUnlockedMaterialIds().map((materialId) => ({
+      const sourceNode = useFactoryStore.getState().nodes[connectingFromId];
+      const targetNode = useFactoryStore.getState().nodes[nodeId];
+      const buttons = [];
+
+      if (sourceNode?.type === 'POWER_GENERATOR' && targetNode?.type !== 'POWER_GENERATOR') {
+        const tierDefinition = sourceNode.powerTier ? getPowerTierDefinition(sourceNode.powerTier) : undefined;
+        buttons.push({
+          text: 'Power Line',
+          onPress: () => {
+            const result = connectPower(connectingFromId, nodeId, tierDefinition?.maxTransferRate ?? sourceNode.powerOutput);
+            if (!result.success) {
+              Alert.alert('Connection Failed', result.error ?? 'Unable to connect nodes.');
+            }
+            setConnectingFromId(null);
+            setSelectedNodeId(null);
+          },
+        });
+      }
+
+      buttons.push(...getUnlockedMaterialIds().map((materialId) => ({
         text: MATERIALS[materialId]?.name ?? materialId.replace(/_/g, ' '),
         onPress: () => {
           const result = connectNodes(connectingFromId, nodeId, materialId, 10);
@@ -109,13 +161,13 @@ export default function GameScreen() {
           setConnectingFromId(null);
           setSelectedNodeId(null);
         },
-      }));
+      })));
 
       Alert.alert(
-        'Select Material',
-        'Choose the material for this connection:',
+        'Select Connection',
+        'Choose whether this connection carries power or a material:',
         [
-          ...materialButtons,
+          ...buttons,
           {
             text: 'Cancel',
             style: 'cancel' as const,

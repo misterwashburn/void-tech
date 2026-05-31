@@ -1,5 +1,7 @@
 import {
+  FactoryEdge,
   FactoryNode,
+  PowerEdge,
   ResourceEdge,
   TickResult,
   NodeTickDelta,
@@ -9,6 +11,14 @@ import { topologicalSort } from './graphUtils';
 
 const HARVESTER_DEFAULT_OUTPUT_RATE = 10.0;
 const STALL_THRESHOLD = 10;
+
+function isResourceEdge(edge: FactoryEdge): edge is ResourceEdge {
+  return edge.connectionType === 'RESOURCE';
+}
+
+function isPowerEdge(edge: FactoryEdge): edge is PowerEdge {
+  return edge.connectionType === 'POWER';
+}
 
 /**
  * Box-Muller transform: generates one sample from a normal distribution.
@@ -28,22 +38,26 @@ export function boxMullerTransform(mean: number, stdDev: number): number {
  */
 export function evaluateTick(
   nodes: Map<string, FactoryNode>,
-  edges: Map<string, ResourceEdge>
+  edges: Map<string, FactoryEdge>
 ): TickResult {
-  // Step 1: Topological sort (sources first)
-  const sortedIds = topologicalSort(nodes, edges);
+  const resourceEdges = new Map(
+    Array.from(edges.entries()).filter(([, edge]) => isResourceEdge(edge))
+  ) as Map<string, ResourceEdge>;
+  const powerEdges = Array.from(edges.values()).filter(isPowerEdge);
 
-  // Build lookup: targetNodeId -> edges feeding into it
+  // Step 1: Topological sort (resource graph only; power lines are a separate network)
+  const sortedIds = topologicalSort(nodes, resourceEdges);
+
+  // Build lookup: targetNodeId -> resource edges feeding into it
   const incomingEdges = new Map<string, ResourceEdge[]>();
-  // Build lookup: sourceNodeId -> edges going out of it
+  // Build lookup: sourceNodeId -> resource edges going out of it
   const outgoingEdges = new Map<string, ResourceEdge[]>();
-
   for (const nodeId of nodes.keys()) {
     incomingEdges.set(nodeId, []);
     outgoingEdges.set(nodeId, []);
   }
 
-  for (const edge of edges.values()) {
+  for (const edge of resourceEdges.values()) {
     if (nodes.has(edge.targetNodeId)) {
       incomingEdges.get(edge.targetNodeId)!.push(edge);
     }
@@ -52,15 +66,45 @@ export function evaluateTick(
     }
   }
 
+
   const nodeDeltas = new Map<string, NodeTickDelta>();
   const edgeDeltas = new Map<string, EdgeTickDelta>();
 
-  // Working copy of efficiency ratings (needed for edge computation later)
   const computedEfficiency = new Map<string, number>();
-  // Working copy of stall ticks (for updated status)
-  const computedStallTicks = new Map<string, number>();
+  const allocatedPowerByEdge = new Map<string, number>();
+  const allocatedPowerByTarget = new Map<string, number>();
+  const remainingPowerBySource = new Map<string, number>();
+  const remainingPowerRequirementByTarget = new Map<string, number>();
 
-  // Step 2: Process nodes in topological order
+  let totalPowerProduction = 0;
+  let totalPowerConsumption = 0;
+
+  for (const node of nodes.values()) {
+    if (node.type === 'POWER_GENERATOR') {
+      remainingPowerBySource.set(node.id, node.powerOutput);
+    } else {
+      remainingPowerRequirementByTarget.set(node.id, node.powerRequirement);
+    }
+  }
+
+  for (const edge of powerEdges) {
+    const sourceNode = nodes.get(edge.sourceNodeId);
+    const targetNode = nodes.get(edge.targetNodeId);
+    if (sourceNode?.type !== 'POWER_GENERATOR' || !targetNode || targetNode.type === 'POWER_GENERATOR') {
+      allocatedPowerByEdge.set(edge.id, 0);
+      continue;
+    }
+
+    const sourceRemaining = remainingPowerBySource.get(sourceNode.id) ?? 0;
+    const targetRemaining = remainingPowerRequirementByTarget.get(targetNode.id) ?? 0;
+    const allocatedPower = Math.min(edge.maxTransferRate, sourceRemaining, targetRemaining);
+
+    remainingPowerBySource.set(sourceNode.id, sourceRemaining - allocatedPower);
+    remainingPowerRequirementByTarget.set(targetNode.id, targetRemaining - allocatedPower);
+    allocatedPowerByEdge.set(edge.id, allocatedPower);
+    allocatedPowerByTarget.set(targetNode.id, (allocatedPowerByTarget.get(targetNode.id) ?? 0) + allocatedPower);
+  }
+
   for (const nodeId of sortedIds) {
     const node = nodes.get(nodeId)!;
     const recipe = node.productionRecipe;
@@ -70,14 +114,14 @@ export function evaluateTick(
     let status: NodeTickDelta['operationalStatus'] = 'OPERATIONAL';
     let energyDraw = 0;
 
-    if (node.type === 'HARVESTER' && !recipe) {
-      // Rule 3: HARVESTERs with no recipe always have efficiency 1.0
+    if (node.type === 'POWER_GENERATOR') {
+      rawEfficiency = 1.0;
+      totalPowerProduction += node.powerOutput;
+    } else if (node.type === 'HARVESTER' && !recipe) {
       rawEfficiency = 1.0;
     } else if (node.type === 'FEEDBACK_REGULATOR') {
-      // Rule 3: FEEDBACK_REGULATOR — consume input, no output, efficiency 1.0
       rawEfficiency = 1.0;
     } else if (recipe) {
-      // Rule 3: Limiting-reagent logic for nodes with recipes
       if (recipe.inputs.length === 0) {
         rawEfficiency = 1.0;
       } else {
@@ -85,7 +129,6 @@ export function evaluateTick(
         const nodeIncomingEdges = incomingEdges.get(nodeId) ?? [];
 
         for (const inputSpec of recipe.inputs) {
-          // Sum all incoming flow rates for this material
           const totalFlow = nodeIncomingEdges
             .filter((e) => e.materialId === inputSpec.materialId)
             .reduce((sum, e) => sum + e.currentFlowRate, 0);
@@ -101,11 +144,18 @@ export function evaluateTick(
 
         rawEfficiency = Math.min(1.0, minRatio === Infinity ? 1.0 : minRatio);
       }
-
-      energyDraw = recipe.energyCost * rawEfficiency;
     }
 
-    // Rule 4: Backpressure / hysteresis
+    if (node.type !== 'POWER_GENERATOR') {
+      const requiredPower = node.powerRequirement;
+      const suppliedPower = allocatedPowerByTarget.get(nodeId) ?? 0;
+      const powerRatio = requiredPower > 0 ? Math.min(1, suppliedPower / requiredPower) : 1;
+
+      rawEfficiency *= powerRatio;
+      energyDraw = requiredPower * rawEfficiency;
+      totalPowerConsumption += energyDraw;
+    }
+
     const outputBufferValues = Object.values(node.outputBuffers);
     const isOutputSaturated =
       outputBufferValues.length > 0 &&
@@ -114,18 +164,15 @@ export function evaluateTick(
     if (isOutputSaturated) {
       stallTicks += 1;
       if (stallTicks >= STALL_THRESHOLD) {
-        // Rule 4 + 5: STALLED
         rawEfficiency = 0;
         status = 'STALLED';
       } else {
-        // Rule 4 + 5: WARNING (efficiency unaffected)
         status = 'WARNING';
       }
     } else {
       stallTicks = 0;
     }
 
-    // Rule 5: Status assignment (if not already set by stall logic)
     if (status !== 'STALLED' && status !== 'WARNING') {
       if (rawEfficiency < 1.0) {
         status = 'STARVED';
@@ -135,7 +182,6 @@ export function evaluateTick(
     }
 
     computedEfficiency.set(nodeId, rawEfficiency);
-    computedStallTicks.set(nodeId, stallTicks);
 
     nodeDeltas.set(nodeId, {
       nodeId,
@@ -145,8 +191,7 @@ export function evaluateTick(
     });
   }
 
-  // Step 3: Compute edge flow rates
-  for (const edge of edges.values()) {
+  for (const edge of resourceEdges.values()) {
     const sourceNode = nodes.get(edge.sourceNodeId);
     if (!sourceNode) continue;
 
@@ -156,17 +201,14 @@ export function evaluateTick(
     let baseOutputRate: number;
 
     if (sourceNode.type === 'HARVESTER' && !recipe) {
-      // Rule 6: HARVESTER with no recipe uses default 10.0/s
       baseOutputRate = HARVESTER_DEFAULT_OUTPUT_RATE;
     } else if (recipe) {
-      // Find the matching output for this edge's material
       const outputSpec = recipe.outputs.find(
         (o) => o.materialId === edge.materialId
       );
 
       if (outputSpec) {
         if (outputSpec.stochastic) {
-          // Apply Box-Muller transform for stochastic outputs
           baseOutputRate = boxMullerTransform(
             outputSpec.stochastic.baseMean,
             outputSpec.stochastic.standardDeviation
@@ -181,7 +223,6 @@ export function evaluateTick(
       baseOutputRate = 0;
     }
 
-    // Rule 6: actualFlowRate = min(maxCapacityRate, efficiency * baseOutputRate)
     const actualFlowRate = Math.min(
       edge.maxCapacityRate,
       sourceEfficiency * baseOutputRate
@@ -193,10 +234,11 @@ export function evaluateTick(
     });
   }
 
-  // Step 4: Energy balance
-  let totalConsumption = 0;
-  for (const delta of nodeDeltas.values()) {
-    totalConsumption += delta.energyDraw;
+  for (const edge of powerEdges) {
+    edgeDeltas.set(edge.id, {
+      edgeId: edge.id,
+      actualFlowRate: allocatedPowerByEdge.get(edge.id) ?? 0,
+    });
   }
 
   return {
@@ -204,8 +246,8 @@ export function evaluateTick(
     nodeDeltas,
     edgeDeltas,
     globalEnergyBalance: {
-      production: 0,
-      consumption: totalConsumption,
+      production: totalPowerProduction,
+      consumption: totalPowerConsumption,
     },
   };
 }

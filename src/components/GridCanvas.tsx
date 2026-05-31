@@ -66,6 +66,8 @@ function getNodeBorderColor(status: OperationalStatus): string {
 
 function getNodeCode(type: FactoryNode['type']): string {
   switch (type) {
+    case 'POWER_GENERATOR':
+      return 'PWR';
     case 'HARVESTER':
       return 'HAR';
     case 'REFINER':
@@ -219,8 +221,8 @@ export default function GridCanvas({ onTapCell, onTapNode }: GridCanvasProps) {
                   key={edge.id}
                   p1={{ x: src.cx, y: src.cy }}
                   p2={{ x: tgt.cx, y: tgt.cy }}
-                  color="rgba(0, 188, 212, 0.6)"
-                  strokeWidth={1.5}
+                  color={edge.connectionType === 'POWER' ? 'rgba(255, 215, 0, 0.75)' : 'rgba(0, 188, 212, 0.6)'}
+                  strokeWidth={edge.connectionType === 'POWER' ? 2.5 : 1.5}
                 />
               );
             })}

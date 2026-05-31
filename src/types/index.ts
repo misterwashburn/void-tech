@@ -1,4 +1,14 @@
-export type NodeType = 'HARVESTER' | 'REFINER' | 'ASSEMBLER' | 'STORAGE' | 'SINK' | 'FEEDBACK_REGULATOR';
+export type NodeType =
+  | 'POWER_GENERATOR'
+  | 'HARVESTER'
+  | 'REFINER'
+  | 'ASSEMBLER'
+  | 'STORAGE'
+  | 'SINK'
+  | 'FEEDBACK_REGULATOR';
+
+export type ConnectionType = 'RESOURCE' | 'POWER';
+export type PowerTier = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 
 export interface Material {
   id: string;
@@ -19,14 +29,27 @@ export interface Recipe {
   energyCost: number;
 }
 
-export interface ResourceEdge {
+export interface BaseEdge {
   id: string;
   sourceNodeId: string;
   targetNodeId: string;
+  connectionType: ConnectionType;
+}
+
+export interface ResourceEdge extends BaseEdge {
+  connectionType: 'RESOURCE';
   materialId: string;
   maxCapacityRate: number;
   currentFlowRate: number;
 }
+
+export interface PowerEdge extends BaseEdge {
+  connectionType: 'POWER';
+  maxTransferRate: number;
+  currentTransferRate: number;
+}
+
+export type FactoryEdge = ResourceEdge | PowerEdge;
 
 export interface FactoryNode {
   id: string;
@@ -37,6 +60,9 @@ export interface FactoryNode {
   inputBuffers: Record<string, { current: number; max: number }>;
   outputBuffers: Record<string, { current: number; max: number }>;
   productionRecipe?: Recipe;
+  powerRequirement: number;
+  powerOutput: number;
+  powerTier?: PowerTier;
   efficiencyRating: number;
   isOperational: boolean;
   cosmeticSkinId: string | null;
@@ -48,7 +74,7 @@ export interface SectorState {
   id: string;
   isUnlocked: boolean;
   nodes: Map<string, FactoryNode>;
-  edges: Map<string, ResourceEdge>;
+  edges: Map<string, FactoryEdge>;
   availableEnergy: number;
   consumedEnergy: number;
 }

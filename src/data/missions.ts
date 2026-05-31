@@ -1,4 +1,4 @@
-import { NodeType } from '../types';
+import { NodeType, PowerTier } from '../types';
 
 export interface MissionRequirement {
   materialId: string;
@@ -9,6 +9,7 @@ export interface MissionUnlocks {
   nodeTypes?: NodeType[];
   materialIds?: string[];
   recipeIds?: string[];
+  powerTiers?: PowerTier[];
 }
 
 export interface MissionDefinition {
@@ -20,9 +21,10 @@ export interface MissionDefinition {
 }
 
 export const INITIAL_UNLOCKS: Required<MissionUnlocks> = {
-  nodeTypes: ['HARVESTER', 'SINK', 'STORAGE'],
+  nodeTypes: ['POWER_GENERATOR', 'HARVESTER', 'SINK', 'STORAGE'],
   materialIds: ['void_ore'],
   recipeIds: [],
+  powerTiers: [1],
 };
 
 export const MISSIONS: MissionDefinition[] = [
@@ -34,6 +36,7 @@ export const MISSIONS: MissionDefinition[] = [
     unlocks: {
       nodeTypes: ['REFINER'],
       recipeIds: ['smelt_plasteel'],
+      powerTiers: [2],
       materialIds: ['plasteel'],
     },
   },
@@ -45,6 +48,7 @@ export const MISSIONS: MissionDefinition[] = [
     unlocks: {
       materialIds: ['hydrocarbon', 'polymer_sheet'],
       recipeIds: ['refine_polymer'],
+      powerTiers: [3],
     },
   },
   {
@@ -56,6 +60,7 @@ export const MISSIONS: MissionDefinition[] = [
       nodeTypes: ['ASSEMBLER'],
       recipeIds: ['assemble_logic_substrate'],
       materialIds: ['logic_substrate'],
+      powerTiers: [4],
     },
   },
   {
@@ -66,6 +71,7 @@ export const MISSIONS: MissionDefinition[] = [
     unlocks: {
       materialIds: ['catalyst', 'charged_alloy'],
       recipeIds: ['forge_charged_alloy'],
+      powerTiers: [5],
     },
   },
   {
@@ -76,6 +82,7 @@ export const MISSIONS: MissionDefinition[] = [
     unlocks: {
       materialIds: ['plasma', 'quantum_cpu'],
       recipeIds: ['synthesize_quantum_cpu'],
+      powerTiers: [6],
     },
   },
   {
@@ -87,6 +94,7 @@ export const MISSIONS: MissionDefinition[] = [
       materialIds: ['raw_exotic', 'chronal_fluid'],
       recipeIds: ['extract_chronal_fluid'],
       nodeTypes: ['FEEDBACK_REGULATOR'],
+      powerTiers: [7],
     },
   },
   {
@@ -97,6 +105,7 @@ export const MISSIONS: MissionDefinition[] = [
     unlocks: {
       recipeIds: ['forge_tachyon_core'],
       materialIds: ['tachyon_core', 'probability_ore', 'flux_filament'],
+      powerTiers: [8],
     },
   },
   {
@@ -106,6 +115,7 @@ export const MISSIONS: MissionDefinition[] = [
     requirement: { materialId: 'tachyon_core', quantity: 10 },
     unlocks: {
       recipeIds: ['process_flux_filament'],
+      powerTiers: [9],
     },
   },
   {
@@ -116,6 +126,7 @@ export const MISSIONS: MissionDefinition[] = [
     unlocks: {
       recipeIds: ['build_singularity_driver'],
       materialIds: ['singularity_driver'],
+      powerTiers: [10],
     },
   },
   {
@@ -137,6 +148,7 @@ export function getUnlockedProgression(completedMissionIds: string[]): Required<
     nodeTypes: [...INITIAL_UNLOCKS.nodeTypes],
     materialIds: [...INITIAL_UNLOCKS.materialIds],
     recipeIds: [...INITIAL_UNLOCKS.recipeIds],
+    powerTiers: [...INITIAL_UNLOCKS.powerTiers],
   };
 
   const addUnique = <T>(target: T[], values: T[] | undefined) => {
@@ -156,6 +168,7 @@ export function getUnlockedProgression(completedMissionIds: string[]): Required<
     addUnique(unlocked.nodeTypes, mission.unlocks.nodeTypes);
     addUnique(unlocked.materialIds, mission.unlocks.materialIds);
     addUnique(unlocked.recipeIds, mission.unlocks.recipeIds);
+    addUnique(unlocked.powerTiers, mission.unlocks.powerTiers);
   }
 
   return unlocked;
