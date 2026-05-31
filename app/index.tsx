@@ -27,6 +27,7 @@ export default function GameScreen() {
   const setSelectedNodeId = useUIStore((s) => s.setSelectedNodeId);
   const connectingFromId = useUIStore((s) => s.connectingFromId);
   const setConnectingFromId = useUIStore((s) => s.setConnectingFromId);
+  const setActiveTab = useUIStore((s) => s.setActiveTab);
 
   function buildNode(
     nodeType: NodeType,
@@ -182,6 +183,7 @@ export default function GameScreen() {
         setSelectedNodeId(null);
       } else {
         setSelectedNodeId(nodeId);
+        setActiveTab('LEDGER');
       }
     }
   }
