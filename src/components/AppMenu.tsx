@@ -9,6 +9,15 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import {
+  Canvas,
+  Circle,
+  Group,
+  Line,
+  RadialGradient,
+  RoundedRect,
+  vec,
+} from '@shopify/react-native-skia';
 
 interface AppMenuProps {
   compact?: boolean;
@@ -37,11 +46,45 @@ const MENU_ITEMS: Array<{ label: string; description: string; route: MenuRoute }
 export function AppIcon() {
   return (
     <View style={styles.iconShell}>
-      <View style={styles.iconCore}>
-        <Text style={styles.iconGlyph}>V</Text>
-      </View>
-      <View style={[styles.iconOrbit, styles.iconOrbitTop]} />
-      <View style={[styles.iconOrbit, styles.iconOrbitBottom]} />
+      <Canvas style={styles.iconCanvas}>
+        <RoundedRect x={1.2} y={1.2} width={33.6} height={33.6} r={7.8}>
+          <RadialGradient
+            c={vec(18, 13.68)}
+            r={22.32}
+            colors={['#0E2630', '#0D1117', '#0A0E14']}
+            positions={[0, 0.55, 1]}
+          />
+        </RoundedRect>
+
+        <Group color="rgba(0,188,212,0.18)">
+          <Circle cx={6} cy={6} r={0.3} />
+          <Circle cx={12} cy={6} r={0.3} />
+          <Circle cx={24} cy={6} r={0.3} />
+          <Circle cx={30} cy={6} r={0.3} />
+          <Circle cx={6} cy={18} r={0.3} />
+          <Circle cx={30} cy={18} r={0.3} />
+          <Circle cx={6} cy={30} r={0.3} />
+          <Circle cx={12} cy={30} r={0.3} />
+          <Circle cx={24} cy={30} r={0.3} />
+          <Circle cx={30} cy={30} r={0.3} />
+        </Group>
+
+        <Group strokeCap="round">
+          <Line p1={vec(11.7, 12.6)} p2={vec(24.3, 12.6)} color="rgba(0,188,212,0.25)" strokeWidth={1.35} />
+          <Line p1={vec(11.7, 12.6)} p2={vec(18, 25.2)} color="rgba(0,188,212,0.28)" strokeWidth={1.5} />
+          <Line p1={vec(24.3, 12.6)} p2={vec(18, 25.2)} color="rgba(0,188,212,0.28)" strokeWidth={1.5} />
+          <Line p1={vec(11.7, 12.6)} p2={vec(24.3, 12.6)} color="rgba(0,188,212,0.55)" strokeWidth={0.45} />
+          <Line p1={vec(11.7, 12.6)} p2={vec(18, 25.2)} color="#00BCD4" strokeWidth={0.6} />
+          <Line p1={vec(24.3, 12.6)} p2={vec(18, 25.2)} color="#00BCD4" strokeWidth={0.6} />
+        </Group>
+
+        <RoundedRect x={9.15} y={10.05} width={5.1} height={5.1} r={1.35} color="#0D1117" />
+        <RoundedRect x={9.15} y={10.05} width={5.1} height={5.1} r={1.35} color="#00BCD4" style="stroke" strokeWidth={0.6} />
+        <RoundedRect x={21.75} y={10.05} width={5.1} height={5.1} r={1.35} color="#0D1117" />
+        <RoundedRect x={21.75} y={10.05} width={5.1} height={5.1} r={1.35} color="#00BCD4" style="stroke" strokeWidth={0.6} />
+        <RoundedRect x={15.45} y={22.65} width={5.1} height={5.1} r={1.35} color="#0D1117" />
+        <RoundedRect x={15.45} y={22.65} width={5.1} height={5.1} r={1.35} color="#FFD700" style="stroke" strokeWidth={0.6} />
+      </Canvas>
     </View>
   );
 }
@@ -143,42 +186,12 @@ const styles = StyleSheet.create({
     minWidth: 38,
   },
   iconShell: {
-    alignItems: 'center',
-    backgroundColor: '#101A26',
-    borderColor: '#00BCD4',
-    borderRadius: 16,
-    borderWidth: 1,
     height: 36,
-    justifyContent: 'center',
-    overflow: 'hidden',
     width: 36,
   },
-  iconCore: {
-    alignItems: 'center',
-    backgroundColor: '#00BCD4',
-    borderRadius: 9,
-    height: 18,
-    justifyContent: 'center',
-    width: 18,
-  },
-  iconGlyph: {
-    color: '#071018',
-    fontSize: 13,
-    fontWeight: '900',
-    lineHeight: 16,
-  },
-  iconOrbit: {
-    backgroundColor: '#9AF6FF',
-    height: 2,
-    opacity: 0.72,
-    position: 'absolute',
-    width: 30,
-  },
-  iconOrbitTop: {
-    transform: [{ rotate: '31deg' }],
-  },
-  iconOrbitBottom: {
-    transform: [{ rotate: '-31deg' }],
+  iconCanvas: {
+    height: 36,
+    width: 36,
   },
   modalRoot: {
     flex: 1,
