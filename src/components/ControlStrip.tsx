@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import AppMenu from './AppMenu';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFactoryStore } from '../store/useFactoryStore';
 
@@ -11,7 +12,7 @@ export default function ControlStrip() {
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <View style={styles.row}>
-        <Text style={styles.title}>VOID-TECH</Text>
+        <AppMenu />
         <Text style={styles.energy}>⚡ {netEnergy.toFixed(1)} MW ({consumedEnergy.toFixed(1)} / {availableEnergy.toFixed(1)})</Text>
       </View>
     </SafeAreaView>
@@ -29,6 +30,5 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#1C2733',
   },
-  title: { color: '#00BCD4', fontSize: 16, fontWeight: 'bold', letterSpacing: 2 },
   energy: { color: '#FFFFFF', fontSize: 13 },
 });
