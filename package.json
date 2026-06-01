@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "prestart": "node scripts/check-expo-av.js",
     "preandroid": "node scripts/check-expo-av.js",
-    "preios": "node scripts/check-expo-av.js && node scripts/ensure-rncore-codegen.js"
+    "preios": "node scripts/check-expo-av.js && node scripts/ensure-rncore-codegen.js",
+    "postinstall": "node scripts/ensure-rncore-codegen.js"
   },
   "dependencies": {
     "@shopify/react-native-skia": "^1.3.0",
