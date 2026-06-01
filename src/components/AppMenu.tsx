@@ -33,7 +33,7 @@ const MENU_ITEMS: Array<{ label: string; description: string; route: MenuRoute }
   },
   {
     label: 'Main Menu',
-    description: 'Return to the start screen placeholder.',
+    description: 'Return to the Void-Tech start screen.',
     route: '/main-menu',
   },
   {
@@ -43,11 +43,15 @@ const MENU_ITEMS: Array<{ label: string; description: string; route: MenuRoute }
   },
 ];
 
-export function AppIcon() {
+export function AppIcon({ size = 36 }: { size?: number }) {
+  const iconSize = { height: size, width: size };
+  const iconScale = size / 36;
+
   return (
-    <View style={styles.iconShell}>
-      <Canvas style={styles.iconCanvas}>
-        <RoundedRect x={1.2} y={1.2} width={33.6} height={33.6} r={7.8}>
+    <View style={[styles.iconShell, iconSize]}>
+      <Canvas style={[styles.iconCanvas, iconSize]}>
+        <Group transform={[{ scale: iconScale }]}>
+          <RoundedRect x={1.2} y={1.2} width={33.6} height={33.6} r={7.8}>
           <RadialGradient
             c={vec(18, 13.68)}
             r={22.32}
@@ -84,6 +88,7 @@ export function AppIcon() {
         <RoundedRect x={21.75} y={10.05} width={5.1} height={5.1} r={1.35} color="#00BCD4" style="stroke" strokeWidth={0.6} />
         <RoundedRect x={15.45} y={22.65} width={5.1} height={5.1} r={1.35} color="#0D1117" />
         <RoundedRect x={15.45} y={22.65} width={5.1} height={5.1} r={1.35} color="#FFD700" style="stroke" strokeWidth={0.6} />
+        </Group>
       </Canvas>
     </View>
   );
