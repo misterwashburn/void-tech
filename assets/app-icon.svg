@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240" fill="none">
+  <defs>
+    <radialGradient id="vtGlow" cx="50%" cy="38%" r="62%">
+      <stop offset="0%" stop-color="#0E2630"></stop>
+      <stop offset="55%" stop-color="#0D1117"></stop>
+      <stop offset="100%" stop-color="#0A0E14"></stop>
+    </radialGradient>
+    <clipPath id="vtSquircle"><rect x="8" y="8" width="224" height="224" rx="52"></rect></clipPath>
+  </defs>
+
+  
+  <rect x="8" y="8" width="224" height="224" rx="52" fill="url(#vtGlow)"></rect>
+
+  <g clip-path="url(#vtSquircle)">
+    
+    <g fill="rgba(0,188,212,0.18)">
+      <circle cx="40" cy="40" r="2"></circle><circle cx="80" cy="40" r="2"></circle><circle cx="160" cy="40" r="2"></circle><circle cx="200" cy="40" r="2"></circle>
+      <circle cx="40" cy="120" r="2"></circle><circle cx="200" cy="120" r="2"></circle>
+      <circle cx="40" cy="200" r="2"></circle><circle cx="80" cy="200" r="2"></circle><circle cx="160" cy="200" r="2"></circle><circle cx="200" cy="200" r="2"></circle>
+    </g>
+
+    
+    <g stroke-linecap="round">
+      <line x1="78" y1="84" x2="162" y2="84" stroke="rgba(0,188,212,0.25)" stroke-width="9"></line>
+      <line x1="78" y1="84" x2="120" y2="168" stroke="rgba(0,188,212,0.28)" stroke-width="10"></line>
+      <line x1="162" y1="84" x2="120" y2="168" stroke="rgba(0,188,212,0.28)" stroke-width="10"></line>
+      <line x1="78" y1="84" x2="162" y2="84" stroke="rgba(0,188,212,0.55)" stroke-width="3"></line>
+      <line x1="78" y1="84" x2="120" y2="168" stroke="#00BCD4" stroke-width="4"></line>
+      <line x1="162" y1="84" x2="120" y2="168" stroke="#00BCD4" stroke-width="4"></line>
+    </g>
+
+    
+    <g>
+      <rect x="61" y="67" width="34" height="34" rx="9" fill="#0D1117" stroke="#00BCD4" stroke-width="4"></rect>
+      <rect x="145" y="67" width="34" height="34" rx="9" fill="#0D1117" stroke="#00BCD4" stroke-width="4"></rect>
+      <rect x="103" y="151" width="34" height="34" rx="9" fill="#0D1117" stroke="#FFD700" stroke-width="4"></rect>
+    </g>
+  </g>
+</svg>
