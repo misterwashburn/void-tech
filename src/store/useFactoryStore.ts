@@ -3,6 +3,17 @@ import { ConnectionPortId, FactoryEdge, FactoryNode, NodeType, PowerTier, Resour
 import { wouldCreateCycle } from '../engine/graphUtils';
 import { getCurrentMission, getUnlockedProgression } from '../data/missions';
 
+export interface FactoryStats {
+  playSessions: number;
+  totalNodesBuilt: number;
+  totalConnectionsMade: number;
+  totalResourceMoved: number;
+  totalEnergyGenerated: number;
+  totalEnergyConsumed: number;
+  totalRuntimeSeconds: number;
+  peakNetEnergy: number;
+}
+
 interface FactoryStoreState {
   id: string;
   isUnlocked: boolean;
@@ -12,6 +23,7 @@ interface FactoryStoreState {
   consumedEnergy: number;
   producedTotals: Record<string, number>;
   completedMissionIds: string[];
+  stats: FactoryStats;
 
   addNode: (node: FactoryNode) => void;
   deleteNode: (nodeId: string) => void;
@@ -80,6 +92,16 @@ export const useFactoryStore = create<FactoryStoreState>((set, get) => ({
   consumedEnergy: 0,
   producedTotals: {},
   completedMissionIds: [],
+  stats: {
+    playSessions: 1,
+    totalNodesBuilt: 0,
+    totalConnectionsMade: 0,
+    totalResourceMoved: 0,
+    totalEnergyGenerated: 0,
+    totalEnergyConsumed: 0,
+    totalRuntimeSeconds: 0,
+    peakNetEnergy: 0,
+  },
 
   addNode(node: FactoryNode) {
     const unlockedNodeTypes = get().getUnlockedNodeTypes();
@@ -96,6 +118,10 @@ export const useFactoryStore = create<FactoryStoreState>((set, get) => ({
 
     set((state) => ({
       nodes: { ...state.nodes, [node.id]: node },
+      stats: {
+        ...state.stats,
+        totalNodesBuilt: state.stats.totalNodesBuilt + 1,
+      },
     }));
   },
 
@@ -154,8 +180,12 @@ export const useFactoryStore = create<FactoryStoreState>((set, get) => ({
       currentFlowRate: 0,
     };
 
-    set((s) => ({
-      edges: { ...s.edges, [edgeId]: newEdge },
+    set((state) => ({
+      edges: { ...state.edges, [edgeId]: newEdge },
+      stats: {
+        ...state.stats,
+        totalConnectionsMade: state.stats.totalConnectionsMade + 1,
+      },
     }));
 
     return { success: true };
@@ -186,9 +216,9 @@ export const useFactoryStore = create<FactoryStoreState>((set, get) => ({
     }
 
     const edgeId = `power_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    set((s) => ({
+    set((state) => ({
       edges: {
-        ...s.edges,
+        ...state.edges,
         [edgeId]: {
           id: edgeId,
           sourceNodeId,
@@ -199,6 +229,10 @@ export const useFactoryStore = create<FactoryStoreState>((set, get) => ({
           maxTransferRate,
           currentTransferRate: 0,
         },
+      },
+      stats: {
+        ...state.stats,
+        totalConnectionsMade: state.stats.totalConnectionsMade + 1,
       },
     }));
 
@@ -260,6 +294,14 @@ export const useFactoryStore = create<FactoryStoreState>((set, get) => ({
         }
       }
 
+      const resourceMovedThisTick = Array.from(result.edgeDeltas.values()).reduce((total, delta) => {
+        const edge = newEdges[delta.edgeId];
+        return edge && isResourceEdge(edge) ? total + Math.max(0, delta.actualFlowRate * tickSeconds) : total;
+      }, 0);
+      const energyProducedThisTick = Math.max(0, result.globalEnergyBalance.production * tickSeconds);
+      const energyConsumedThisTick = Math.max(0, result.globalEnergyBalance.consumption * tickSeconds);
+      const netEnergy = result.globalEnergyBalance.production - result.globalEnergyBalance.consumption;
+
       return {
         nodes: newNodes,
         edges: newEdges,
@@ -270,6 +312,14 @@ export const useFactoryStore = create<FactoryStoreState>((set, get) => ({
           state.completedMissionIds,
           newProducedTotals
         ),
+        stats: {
+          ...state.stats,
+          totalResourceMoved: state.stats.totalResourceMoved + resourceMovedThisTick,
+          totalEnergyGenerated: state.stats.totalEnergyGenerated + energyProducedThisTick,
+          totalEnergyConsumed: state.stats.totalEnergyConsumed + energyConsumedThisTick,
+          totalRuntimeSeconds: state.stats.totalRuntimeSeconds + tickSeconds,
+          peakNetEnergy: Math.max(state.stats.peakNetEnergy, netEnergy),
+        },
       };
     });
   },
