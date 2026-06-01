@@ -5,11 +5,18 @@ const fs = require('fs');
 const path = require('path');
 
 const projectRoot = path.resolve(__dirname, '..');
-const requiredRncoreHeaders = [
-  'ShadowNodes.h',
-  'States.h',
-  'RCTComponentViewHelpers.h',
+const requiredRncoreFiles = [
+  'ComponentDescriptors.cpp',
+  'ComponentDescriptors.h',
+  'EventEmitters.cpp',
+  'EventEmitters.h',
+  'Props.cpp',
   'Props.h',
+  'RCTComponentViewHelpers.h',
+  'ShadowNodes.cpp',
+  'ShadowNodes.h',
+  'States.cpp',
+  'States.h',
 ];
 
 function resolveFromProject(request) {
@@ -20,7 +27,7 @@ function getReactNativeRoot() {
   return path.dirname(resolveFromProject('react-native/package.json'));
 }
 
-function getMissingHeaders(reactNativeRoot) {
+function getMissingRncoreFiles(reactNativeRoot) {
   const rncoreDir = path.join(
     reactNativeRoot,
     'ReactCommon',
@@ -30,8 +37,8 @@ function getMissingHeaders(reactNativeRoot) {
     'rncore',
   );
 
-  return requiredRncoreHeaders.filter(
-    (header) => !fs.existsSync(path.join(rncoreDir, header)),
+  return requiredRncoreFiles.filter(
+    (file) => !fs.existsSync(path.join(rncoreDir, file)),
   );
 }
 
@@ -59,28 +66,28 @@ function runCodegen(reactNativeRoot) {
 
 function ensureRncoreCodegen() {
   const reactNativeRoot = getReactNativeRoot();
-  let missingHeaders = getMissingHeaders(reactNativeRoot);
+  let missingFiles = getMissingRncoreFiles(reactNativeRoot);
 
-  if (missingHeaders.length === 0) {
-    console.log('[rncore-codegen] React Native rncore headers are present.');
+  if (missingFiles.length === 0) {
+    console.log('[rncore-codegen] React Native rncore generated files are present.');
     return;
   }
 
   console.log(
-    `[rncore-codegen] Missing generated React Native rncore headers: ${missingHeaders.join(', ')}`,
+    `[rncore-codegen] Missing generated React Native rncore files: ${missingFiles.join(', ')}`,
   );
   console.log('[rncore-codegen] Running React Native codegen for iOS before Xcode builds pods...');
 
   runCodegen(reactNativeRoot);
 
-  missingHeaders = getMissingHeaders(reactNativeRoot);
-  if (missingHeaders.length > 0) {
+  missingFiles = getMissingRncoreFiles(reactNativeRoot);
+  if (missingFiles.length > 0) {
     throw new Error(
-      `React Native codegen completed, but rncore headers are still missing: ${missingHeaders.join(', ')}`,
+      `React Native codegen completed, but rncore files are still missing: ${missingFiles.join(', ')}`,
     );
   }
 
-  console.log('[rncore-codegen] React Native rncore headers are present.');
+  console.log('[rncore-codegen] React Native rncore generated files are present.');
 }
 
 ensureRncoreCodegen();
