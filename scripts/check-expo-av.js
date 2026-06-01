@@ -6,21 +6,30 @@ const missingDependencyMessage = [
   'Run `npm install` (or `npx expo install expo-av`) before starting Metro, then restart with `npm start -- --clear`.',
 ].join('\n');
 
-function checkExpoAv() {
+function isExpoAvInstalled() {
   try {
     require.resolve('expo-av/package.json');
+    return true;
   } catch {
-    throw new Error(missingDependencyMessage);
+    return false;
   }
+}
+
+function checkExpoAv({ exitOnMissing = false } = {}) {
+  if (isExpoAvInstalled()) {
+    return true;
+  }
+
+  if (exitOnMissing) {
+    console.error(missingDependencyMessage);
+    process.exit(1);
+  }
+
+  throw new Error(missingDependencyMessage);
 }
 
 if (require.main === module) {
-  try {
-    checkExpoAv();
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exit(1);
-  }
+  checkExpoAv({ exitOnMissing: true });
 }
 
-module.exports = { checkExpoAv };
+module.exports = { checkExpoAv, isExpoAvInstalled };
