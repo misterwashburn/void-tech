@@ -9,6 +9,7 @@ const requiredRncoreHeaders = [
   'ShadowNodes.h',
   'States.h',
   'RCTComponentViewHelpers.h',
+  'Props.h',
 ];
 
 function resolveFromProject(request) {
@@ -56,25 +57,30 @@ function runCodegen(reactNativeRoot) {
   );
 }
 
-const reactNativeRoot = getReactNativeRoot();
-let missingHeaders = getMissingHeaders(reactNativeRoot);
+function ensureRncoreCodegen() {
+  const reactNativeRoot = getReactNativeRoot();
+  let missingHeaders = getMissingHeaders(reactNativeRoot);
 
-if (missingHeaders.length === 0) {
-  process.exit(0);
-}
+  if (missingHeaders.length === 0) {
+    console.log('[rncore-codegen] React Native rncore headers are present.');
+    return;
+  }
 
-console.log(
-  `[rncore-codegen] Missing generated React Native rncore headers: ${missingHeaders.join(', ')}`,
-);
-console.log('[rncore-codegen] Running React Native codegen for iOS before Xcode builds pods...');
-
-runCodegen(reactNativeRoot);
-
-missingHeaders = getMissingHeaders(reactNativeRoot);
-if (missingHeaders.length > 0) {
-  throw new Error(
-    `React Native codegen completed, but rncore headers are still missing: ${missingHeaders.join(', ')}`,
+  console.log(
+    `[rncore-codegen] Missing generated React Native rncore headers: ${missingHeaders.join(', ')}`,
   );
+  console.log('[rncore-codegen] Running React Native codegen for iOS before Xcode builds pods...');
+
+  runCodegen(reactNativeRoot);
+
+  missingHeaders = getMissingHeaders(reactNativeRoot);
+  if (missingHeaders.length > 0) {
+    throw new Error(
+      `React Native codegen completed, but rncore headers are still missing: ${missingHeaders.join(', ')}`,
+    );
+  }
+
+  console.log('[rncore-codegen] React Native rncore headers are present.');
 }
 
-console.log('[rncore-codegen] React Native rncore headers are present.');
+ensureRncoreCodegen();
