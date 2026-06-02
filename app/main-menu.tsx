@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
-import { Alert, GestureResponderEvent, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { DimensionValue } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { AppIcon } from '../src/components/AppMenu';
 import { useSettingsStore } from '../src/store/useSettingsStore';
@@ -22,6 +24,12 @@ const GRID_DOTS: Array<{ key: string; left: DimensionValue; top: DimensionValue 
   })
 );
 
+const SLIDER_THUMB_SIZE = 22;
+
+function clampSliderValue(value: number) {
+  return Math.min(1, Math.max(0, value));
+}
+
 export default function MainMenuScreen() {
   const router = useRouter();
   const [isSettingsVisible, setSettingsVisible] = useState(false);
@@ -34,10 +42,7 @@ export default function MainMenuScreen() {
 
     if (action.route) {
       router.push(action.route);
-      return;
     }
-
-    Alert.alert('Account Console', 'Account services are coming online in a future update.');
   }
 
   return (
@@ -162,20 +167,44 @@ interface VolumeSliderProps {
 }
 
 function VolumeSlider({ label, value, onChange }: VolumeSliderProps) {
-  const [trackWidth, setTrackWidth] = useState(0);
-  const percentage = Math.round(value * 100);
+  const clampedValue = clampSliderValue(value);
+  const sliderValue = useSharedValue(clampedValue);
+  const trackWidthValue = useSharedValue(0);
+  const percentage = Math.round(clampedValue * 100);
+
+  useEffect(() => {
+    sliderValue.value = clampedValue;
+  }, [clampedValue, sliderValue]);
+
+  const fillStyle = useAnimatedStyle(() => ({
+    width: trackWidthValue.value * sliderValue.value,
+  }));
+
+  const thumbStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: trackWidthValue.value * sliderValue.value - SLIDER_THUMB_SIZE / 2 }],
+  }));
 
   function stepVolume(direction: -1 | 1) {
-    onChange(value + direction * 0.1);
+    const nextValue = clampSliderValue(value + direction * 0.1);
+    sliderValue.value = nextValue;
+    onChange(nextValue);
   }
 
-  function updateFromGesture(event: GestureResponderEvent) {
-    if (trackWidth === 0) {
-      return;
-    }
-
-    onChange(event.nativeEvent.locationX / trackWidth);
-  }
+  const panGesture = Gesture.Pan()
+    .minDistance(0)
+    .onBegin((event) => {
+      if (trackWidthValue.value > 0) {
+        sliderValue.value = Math.min(1, Math.max(0, event.x / trackWidthValue.value));
+      }
+    })
+    .onUpdate((event) => {
+      if (trackWidthValue.value > 0) {
+        sliderValue.value = Math.min(1, Math.max(0, event.x / trackWidthValue.value));
+      }
+    })
+    .onFinalize(() => {
+      runOnJS(onChange)(sliderValue.value);
+    });
 
   return (
     <View style={styles.sliderGroup}>
@@ -192,20 +221,20 @@ function VolumeSlider({ label, value, onChange }: VolumeSliderProps) {
         >
           <Text style={styles.sliderStepText}>−</Text>
         </Pressable>
-        <View
-          accessibilityLabel={`${label} volume`}
-          accessibilityRole="adjustable"
-          accessibilityValue={{ min: 0, max: 100, now: percentage }}
-          onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
-          onMoveShouldSetResponder={() => true}
-          onResponderGrant={updateFromGesture}
-          onResponderMove={updateFromGesture}
-          onStartShouldSetResponder={() => true}
-          style={styles.sliderTrack}
-        >
-          <View style={[styles.sliderFill, { width: `${percentage}%` }]} />
-          <View style={[styles.sliderThumb, { left: `${percentage}%` }]} />
-        </View>
+        <GestureDetector gesture={panGesture}>
+          <Animated.View
+            accessibilityLabel={`${label} volume`}
+            accessibilityRole="adjustable"
+            accessibilityValue={{ min: 0, max: 100, now: percentage }}
+            onLayout={(event) => {
+              trackWidthValue.value = event.nativeEvent.layout.width;
+            }}
+            style={styles.sliderTrack}
+          >
+            <Animated.View style={[styles.sliderFill, fillStyle]} />
+            <Animated.View style={[styles.sliderThumb, thumbStyle]} />
+          </Animated.View>
+        </GestureDetector>
         <Pressable
           accessibilityLabel={`Raise ${label} volume`}
           accessibilityRole="button"

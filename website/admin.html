@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Void-Tech Admin</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="site-shell">
+      <nav class="nav">
+        <a class="brand" href="./index.html">
+          <img src="../assets/app-icon.svg" alt="" />
+          <span>VOID-TECH ADMIN</span>
+        </a>
+        <div class="nav-links">
+          <a class="button" href="./index.html">Marketing Site</a>
+          <button class="button" id="refreshButton" type="button">Refresh</button>
+          <button class="button" id="signOutButton" type="button">Sign Out</button>
+        </div>
+      </nav>
+
+      <section class="auth-panel panel" id="authPanel">
+        <p class="eyebrow">Operations Access</p>
+        <h1>Admin Sign In</h1>
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email" />
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" />
+        <button class="button primary" id="signInButton" type="button">Sign In</button>
+        <p class="error" id="authError"></p>
+      </section>
+
+      <section class="admin-body" id="dashboard" hidden>
+        <header class="admin-header">
+          <div>
+            <p class="eyebrow">Operations</p>
+            <h1>Admin Console</h1>
+            <p class="muted" id="signedInAs"></p>
+          </div>
+        </header>
+
+        <div class="panel warning" id="adminWarning">
+          This user is authenticated but does not have admin app_metadata. RLS will only return rows this user can access.
+        </div>
+
+        <div class="grid metrics" id="metrics"></div>
+
+        <div class="admin-columns">
+          <section class="panel">
+            <h2>Users</h2>
+            <div class="table-wrap"><table id="usersTable"></table></div>
+          </section>
+          <section class="panel">
+            <h2>Behavior</h2>
+            <div class="table-wrap"><table id="eventsTable"></table></div>
+          </section>
+          <section class="panel">
+            <h2>Bug Reports</h2>
+            <div class="table-wrap"><table id="bugsTable"></table></div>
+          </section>
+          <section class="panel">
+            <h2>Financials</h2>
+            <div class="form-row">
+              <input id="financeType" value="subscription_payment" />
+              <input id="financeAmount" placeholder="Amount" type="number" step="0.01" />
+              <button class="button primary" id="recordFinanceButton" type="button">Record</button>
+            </div>
+            <div class="table-wrap"><table id="financialsTable"></table></div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="./admin.js"></script>
+  </body>
+</html>
