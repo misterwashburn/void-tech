@@ -1,23 +1,32 @@
 import React, { useState } from 'react';
-import { Alert, GestureResponderEvent, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, GestureResponderEvent, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import type { DimensionValue } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import AppMenu, { AppIcon } from '../src/components/AppMenu';
+import { AppIcon } from '../src/components/AppMenu';
 import { useSettingsStore } from '../src/store/useSettingsStore';
 
-const MENU_ACTIONS = [
-  { label: 'Continue', eyebrow: 'Resume active factory', route: '/' as const },
-  { label: 'New Game', eyebrow: 'Start a fresh void run', route: '/' as const },
-  { label: 'Achievements', eyebrow: 'Review factory milestones', route: '/stats' as const },
-  { label: 'Settings', eyebrow: 'Tune audio levels', route: 'settings' as const },
-  { label: 'Account', eyebrow: 'Pilot profile and sync', route: null },
+const SECONDARY_ACTIONS = [
+  { label: 'New Game', eyebrow: 'Start on a new station', code: 'NEW', route: '/' as const },
+  { label: 'Achievements', eyebrow: 'Review milestones', code: 'ACH', route: '/stats' as const },
+  { label: 'Settings', eyebrow: 'Tune audio, video & haptics', code: 'CFG', route: 'settings' as const },
+  { label: 'Account', eyebrow: 'Profile & sync', code: 'USR', route: null },
 ];
+
+const GRID_DOTS: Array<{ key: string; left: DimensionValue; top: DimensionValue }> = Array.from(
+  { length: 110 },
+  (_, index) => ({
+    key: `grid-dot-${index}`,
+    left: `${(index % 10) * 10 + 2}%` as DimensionValue,
+    top: `${Math.floor(index / 10) * 9 + 2}%` as DimensionValue,
+  })
+);
 
 export default function MainMenuScreen() {
   const router = useRouter();
   const [isSettingsVisible, setSettingsVisible] = useState(false);
 
-  function handleMenuPress(action: (typeof MENU_ACTIONS)[number]) {
+  function handleMenuPress(action: (typeof SECONDARY_ACTIONS)[number]) {
     if (action.route === 'settings') {
       setSettingsVisible(true);
       return;
@@ -33,59 +42,78 @@ export default function MainMenuScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.backgroundOrbTop} />
-      <View style={styles.backgroundOrbBottom} />
-      <View style={styles.gridLayer}>
-        {Array.from({ length: 8 }).map((_, index) => (
-          <View key={`scanline-${index}`} style={[styles.scanLine, { top: `${index * 14}%` }]} />
-        ))}
-      </View>
-
-      <View style={styles.header}>
-        <AppMenu compact />
-      </View>
-
-      <View style={styles.content}>
-        <View style={styles.heroPanel}>
-          <View style={styles.wordMarkWrap}>
-            <Text accessibilityRole="header" style={[styles.wordMark, styles.wordMarkShadow]}>
-              Void-Tech
-            </Text>
-            <Text style={styles.wordMark}>Void-Tech</Text>
-          </View>
-
-          <View style={styles.subtitlePill}>
-            <View style={styles.subtitleDash} />
-            <Text style={styles.subtitle}>Discover. Build. Plan.</Text>
-            <View style={styles.subtitleDash} />
-          </View>
-
-          <View style={styles.logoPedestal}>
-            <View style={styles.logoGlow} />
-            <AppIcon size={116} />
-            <Text style={styles.logoCaption}>Station Console</Text>
-          </View>
-        </View>
-
-        <View style={styles.buttonStack}>
-          {MENU_ACTIONS.map((action) => (
-            <Pressable
-              accessibilityRole="button"
-              key={action.label}
-              onPress={() => handleMenuPress(action)}
-              style={({ pressed }) => [styles.menuButton, pressed && styles.menuButtonPressed]}
-            >
-              <View style={styles.buttonLeftRail} />
-              <View style={styles.buttonContent}>
-                <Text style={styles.buttonEyebrow}>{action.eyebrow}</Text>
-                <Text style={styles.buttonLabel}>{action.label}</Text>
-              </View>
-              <View style={styles.buttonGlyph}>
-                <Text style={styles.buttonGlyphText}>⌁</Text>
-              </View>
-            </Pressable>
+      <View style={styles.phoneShell}>
+        <View style={styles.dottedGrid} pointerEvents="none">
+          {GRID_DOTS.map((dot) => (
+            <View key={dot.key} style={[styles.gridDot, { left: dot.left, top: dot.top }]} />
           ))}
         </View>
+        <View style={styles.topGlow} />
+        <View style={styles.bottomGlow} />
+
+        <ScrollView
+          bounces={false}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.hero}>
+            <View style={styles.microLogo}>
+              <AppIcon size={60} />
+            </View>
+            <Text accessibilityRole="header" style={styles.wordMark}>VOID-TECH</Text>
+            <Text style={styles.subtitle}>DISCOVER  ·  BUILD  ·  PLAN</Text>
+          </View>
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push('/')}
+            style={({ pressed }) => [styles.continueCard, pressed && styles.continueCardPressed]}
+          >
+            <View style={styles.continueHeader}>
+              <View style={styles.continueCopy}>
+                <Text style={styles.cardEyebrow}>RESUME ACTIVE STATION</Text>
+                <Text style={styles.continueTitle}>Continue</Text>
+              </View>
+              <View style={styles.playButton}>
+                <Text style={styles.playGlyph}>▶</Text>
+              </View>
+            </View>
+
+            <View style={styles.cardDivider} />
+
+            <View style={styles.stationMeta}>
+              <Text style={styles.metaText}>SECTOR ALPHA · 14 NODES</Text>
+              <Text style={styles.energyText}>⚡ 128.4 GJ</Text>
+            </View>
+            <View style={styles.badgeRow}>
+              <Text style={[styles.badge, styles.operationalBadge]}>OPERATIONAL</Text>
+              <Text style={[styles.badge, styles.starvedBadge]}>STARVED</Text>
+              <Text style={styles.nominalText}>+12 nominal</Text>
+            </View>
+          </Pressable>
+
+          <View style={styles.buttonStack}>
+            {SECONDARY_ACTIONS.map((action) => (
+              <Pressable
+                accessibilityRole="button"
+                key={action.label}
+                onPress={() => handleMenuPress(action)}
+                style={({ pressed }) => [styles.menuButton, pressed && styles.menuButtonPressed]}
+              >
+                <View style={styles.actionCodeBox}>
+                  <Text style={styles.actionCode}>{action.code}</Text>
+                </View>
+                <View style={styles.buttonContent}>
+                  <Text style={styles.buttonEyebrow}>{action.eyebrow}</Text>
+                  <Text style={styles.buttonLabel}>{action.label}</Text>
+                </View>
+                <Text style={styles.buttonChevron}>›</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Text style={styles.version}>v0.1.0</Text>
+        </ScrollView>
       </View>
 
       <SettingsModal visible={isSettingsVisible} onClose={() => setSettingsVisible(false)} />
@@ -192,197 +220,262 @@ function VolumeSlider({ label, value, onChange }: VolumeSliderProps) {
 }
 
 const styles = StyleSheet.create({
-  container: { backgroundColor: '#070B12', flex: 1, overflow: 'hidden' },
-  backgroundOrbTop: {
-    backgroundColor: 'rgba(0,188,212,0.16)',
-    borderRadius: 180,
-    height: 360,
-    position: 'absolute',
-    right: -140,
-    top: -120,
-    width: 360,
-  },
-  backgroundOrbBottom: {
-    backgroundColor: 'rgba(255,215,0,0.08)',
-    borderRadius: 150,
-    bottom: -90,
-    height: 300,
-    left: -120,
-    position: 'absolute',
-    width: 300,
-  },
-  gridLayer: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.5,
-  },
-  scanLine: {
-    backgroundColor: 'rgba(0,188,212,0.08)',
-    height: 1,
-    left: 0,
-    position: 'absolute',
-    right: 0,
-  },
-  header: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    paddingHorizontal: 18,
-    paddingTop: 10,
-  },
-  content: {
-    alignItems: 'center',
+  container: {
+    backgroundColor: '#02050A',
     flex: 1,
-    justifyContent: 'center',
-    paddingBottom: 36,
-    paddingHorizontal: 24,
   },
-  heroPanel: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(10,14,20,0.82)',
-    borderColor: 'rgba(0,188,212,0.28)',
-    borderRadius: 32,
+  phoneShell: {
+    backgroundColor: '#070C13',
+    borderColor: 'rgba(18, 37, 52, 0.9)',
+    borderRadius: 52,
     borderWidth: 1,
-    maxWidth: 440,
-    paddingHorizontal: 28,
-    paddingVertical: 32,
-    shadowColor: '#00BCD4',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 24,
-    width: '100%',
+    flex: 1,
+    margin: 7,
+    overflow: 'hidden',
   },
-  wordMarkWrap: {
+  dottedGrid: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  gridDot: {
+    backgroundColor: 'rgba(0, 188, 212, 0.18)',
+    borderRadius: 2,
+    height: 4,
+    position: 'absolute',
+    width: 4,
+  },
+  topGlow: {
+    backgroundColor: 'rgba(0, 188, 212, 0.08)',
+    borderRadius: 180,
+    height: 260,
+    left: 60,
+    position: 'absolute',
+    right: 60,
+    top: 96,
+  },
+  bottomGlow: {
+    backgroundColor: 'rgba(0, 188, 212, 0.06)',
+    borderRadius: 220,
+    bottom: -120,
+    height: 320,
+    left: -24,
+    position: 'absolute',
+    right: -24,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'flex-end',
+    paddingBottom: 34,
+    paddingHorizontal: 26,
+    paddingTop: 88,
+  },
+  hero: {
     alignItems: 'center',
+    marginBottom: 126,
+  },
+  microLogo: {
+    alignItems: 'center',
+    height: 72,
     justifyContent: 'center',
-    minHeight: 78,
+    marginBottom: 14,
+    opacity: 0.98,
+    width: 72,
   },
   wordMark: {
-    color: '#F8FCFF',
-    fontSize: 46,
+    color: '#00BCD4',
+    fontSize: 36,
     fontWeight: '900',
-    letterSpacing: 1.8,
-    textShadowColor: '#00BCD4',
+    letterSpacing: 4,
+    lineHeight: 44,
+    textAlign: 'center',
+    textShadowColor: 'rgba(0, 188, 212, 0.32)',
     textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 14,
-    textTransform: 'uppercase',
-  },
-  wordMarkShadow: {
-    color: '#071018',
-    position: 'absolute',
-    marginLeft: 4,
-    marginTop: 5,
-    textShadowColor: '#FFD700',
-    textShadowRadius: 7,
-  },
-  subtitlePill: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,188,212,0.08)',
-    borderColor: 'rgba(125,220,232,0.28)',
-    borderRadius: 999,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 4,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
+    textShadowRadius: 18,
   },
   subtitle: {
-    color: '#BEEFF5',
-    fontSize: 15,
+    color: '#9EACC7',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 6,
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  continueCard: {
+    backgroundColor: 'rgba(6, 32, 41, 0.78)',
+    borderColor: '#00BCD4',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    minHeight: 206,
+    overflow: 'hidden',
+    paddingHorizontal: 24,
+    paddingVertical: 24,
+    shadowColor: '#00BCD4',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.25,
+    shadowRadius: 24,
+  },
+  continueCardPressed: {
+    backgroundColor: 'rgba(0, 188, 212, 0.16)',
+    transform: [{ scale: 0.99 }],
+  },
+  continueHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+  },
+  continueCopy: {
+    flex: 1,
+  },
+  cardEyebrow: {
+    color: '#00BCD4',
+    fontSize: 13,
     fontWeight: '800',
-    letterSpacing: 1.2,
+    letterSpacing: 4,
+    marginBottom: 8,
     textTransform: 'uppercase',
   },
-  subtitleDash: {
-    backgroundColor: '#FFD700',
-    borderRadius: 2,
-    height: 3,
-    width: 22,
+  continueTitle: {
+    color: '#FFFFFF',
+    fontSize: 36,
+    fontWeight: '900',
+    letterSpacing: -1.2,
+    lineHeight: 42,
   },
-  logoPedestal: {
+  playButton: {
     alignItems: 'center',
-    marginTop: 26,
+    borderColor: '#FFE100',
+    borderRadius: 36,
+    borderWidth: 2.5,
+    height: 72,
+    justifyContent: 'center',
+    marginLeft: 18,
+    shadowColor: '#FFE100',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 18,
+    width: 72,
   },
-  logoGlow: {
-    backgroundColor: 'rgba(0,188,212,0.22)',
-    borderRadius: 74,
-    height: 148,
-    position: 'absolute',
-    top: -16,
-    width: 148,
+  playGlyph: {
+    color: '#FFE100',
+    fontSize: 25,
+    marginLeft: 4,
   },
-  logoCaption: {
-    color: '#6DE4F2',
+  cardDivider: {
+    backgroundColor: 'rgba(132, 161, 184, 0.18)',
+    height: 1,
+    marginBottom: 24,
+    marginTop: 27,
+  },
+  stationMeta: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  metaText: {
+    color: '#8FA2BF',
+    flex: 1,
+    fontSize: 15,
+    letterSpacing: 0.8,
+  },
+  energyText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    letterSpacing: 1,
+    marginLeft: 12,
+  },
+  badgeRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 9,
+    marginTop: 18,
+  },
+  badge: {
+    borderRadius: 4,
+    borderWidth: 2,
     fontSize: 12,
     fontWeight: '900',
-    letterSpacing: 2.2,
-    marginTop: 12,
-    textTransform: 'uppercase',
+    letterSpacing: 1.1,
+    overflow: 'hidden',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  operationalBadge: {
+    borderColor: '#00BCD4',
+    color: '#00BCD4',
+  },
+  starvedBadge: {
+    borderColor: '#FFB000',
+    color: '#FFB000',
+  },
+  nominalText: {
+    color: '#6F8399',
+    fontSize: 15,
+    letterSpacing: 1.3,
   },
   buttonStack: {
-    gap: 14,
-    marginTop: 26,
-    maxWidth: 440,
-    width: '100%',
+    gap: 13,
+    marginTop: 18,
   },
   menuButton: {
     alignItems: 'center',
-    backgroundColor: 'rgba(16,26,38,0.94)',
-    borderColor: 'rgba(0,188,212,0.38)',
-    borderRadius: 18,
-    borderWidth: 1,
+    backgroundColor: 'rgba(11, 17, 25, 0.94)',
+    borderColor: '#223648',
+    borderRadius: 10,
+    borderWidth: 1.5,
     flexDirection: 'row',
-    minHeight: 68,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.28,
-    shadowRadius: 16,
+    minHeight: 88,
+    paddingHorizontal: 23,
   },
   menuButtonPressed: {
-    backgroundColor: 'rgba(0,188,212,0.16)',
-    borderColor: '#FFD700',
-    transform: [{ scale: 0.985 }],
+    backgroundColor: 'rgba(0, 188, 212, 0.1)',
+    borderColor: 'rgba(0, 188, 212, 0.7)',
+    transform: [{ scale: 0.99 }],
   },
-  buttonLeftRail: {
-    alignSelf: 'stretch',
-    backgroundColor: '#00BCD4',
-    width: 6,
+  actionCodeBox: {
+    alignItems: 'center',
+    backgroundColor: '#0B222C',
+    borderColor: '#1B4052',
+    borderRadius: 10,
+    borderWidth: 1.5,
+    height: 64,
+    justifyContent: 'center',
+    width: 66,
+  },
+  actionCode: {
+    color: '#00BCD4',
+    fontSize: 17,
+    fontWeight: '900',
+    letterSpacing: 1.2,
   },
   buttonContent: {
     flex: 1,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
+    paddingLeft: 20,
   },
   buttonEyebrow: {
-    color: '#7DDCE8',
-    fontSize: 11,
+    color: '#6F8399',
+    fontSize: 12,
     fontWeight: '800',
-    letterSpacing: 1.1,
-    marginBottom: 3,
+    letterSpacing: 3.8,
+    marginBottom: 7,
     textTransform: 'uppercase',
   },
   buttonLabel: {
     color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '900',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  buttonGlyph: {
-    alignItems: 'center',
-    borderColor: 'rgba(255,215,0,0.34)',
-    borderRadius: 14,
-    borderWidth: 1,
-    height: 42,
-    justifyContent: 'center',
-    marginRight: 14,
-    width: 42,
-  },
-  buttonGlyphText: {
-    color: '#FFD700',
     fontSize: 25,
     fontWeight: '900',
+    letterSpacing: -0.5,
+  },
+  buttonChevron: {
+    color: '#7293A9',
+    fontSize: 32,
+    fontWeight: '300',
+    marginLeft: 12,
+  },
+  version: {
+    color: '#6F8399',
+    fontSize: 12,
+    letterSpacing: 4,
+    marginTop: 26,
+    textAlign: 'center',
   },
   modalScrim: {
     alignItems: 'center',
