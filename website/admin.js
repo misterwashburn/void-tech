@@ -129,6 +129,20 @@ document.querySelector('#signInButton').addEventListener('click', async () => {
   await loadDashboard();
 });
 
+document.querySelector('#appleSignInButton').addEventListener('click', async () => {
+  authError.textContent = '';
+  const { error } = await client.auth.signInWithOAuth({
+    provider: 'apple',
+    options: {
+      redirectTo: `${window.location.origin}${window.location.pathname}`,
+    },
+  });
+
+  if (error) {
+    authError.textContent = error.message;
+  }
+});
+
 document.querySelector('#signOutButton').addEventListener('click', async () => {
   await client.auth.signOut();
   await loadDashboard();
