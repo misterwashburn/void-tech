@@ -5,11 +5,14 @@ export type NodeType =
   | 'ASSEMBLER'
   | 'STORAGE'
   | 'SINK'
+  | 'MERGE_UNIT'
+  | 'SPLIT_UNIT'
   | 'RELAY'
   | 'FEEDBACK_REGULATOR';
 
 export type ConnectionType = 'RESOURCE' | 'POWER';
 export type PowerTier = 0 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+export type HarvesterTier = 0 | 5 | 10;
 
 export interface Material {
   id: string;
@@ -24,7 +27,7 @@ export interface StochasticParameters {
 }
 
 export interface Recipe {
-  nodeType?: Extract<NodeType, 'REFINER' | 'ASSEMBLER'>;
+  nodeType?: Extract<NodeType, 'HARVESTER' | 'REFINER' | 'ASSEMBLER'>;
   inputs: Array<{ materialId: string; ratePerSecond: number }>;
   outputs: Array<{ materialId: string; ratePerSecond: number; stochastic?: StochasticParameters }>;
   energyCost: number;
@@ -70,6 +73,7 @@ export interface FactoryNode {
   powerRequirement: number;
   powerOutput: number;
   powerTier?: PowerTier;
+  harvesterTier?: HarvesterTier;
   efficiencyRating: number;
   isOperational: boolean;
   cosmeticSkinId: string | null;
@@ -102,6 +106,7 @@ export interface TickResult {
   timestamp: number;
   nodeDeltas: Map<string, NodeTickDelta>;
   edgeDeltas: Map<string, EdgeTickDelta>;
+  productionRatesByNode: Map<string, Record<string, number>>;
   globalEnergyBalance: { production: number; consumption: number };
 }
 

@@ -8,8 +8,7 @@ import {
   EdgeTickDelta,
 } from '../types';
 import { topologicalSort } from './graphUtils';
-
-const HARVESTER_DEFAULT_OUTPUT_RATE = 10.0;
+import { getHarvesterOutputRate } from '../data/harvesters';
 const STALL_THRESHOLD = 10;
 
 function isResourceEdge(edge: FactoryEdge): edge is ResourceEdge {
@@ -18,6 +17,16 @@ function isResourceEdge(edge: FactoryEdge): edge is ResourceEdge {
 
 function isPowerEdge(edge: FactoryEdge): edge is PowerEdge {
   return edge.connectionType === 'POWER';
+}
+
+function isTransportJunction(node: FactoryNode): boolean {
+  return node.type === 'MERGE_UNIT' || node.type === 'SPLIT_UNIT';
+}
+
+function getProductionRecipe(node: FactoryNode) {
+  return node.type === 'HARVESTER' || node.type === 'REFINER' || node.type === 'ASSEMBLER'
+    ? node.productionRecipe
+    : undefined;
 }
 
 /**
@@ -71,6 +80,7 @@ export function evaluateTick(
   const edgeDeltas = new Map<string, EdgeTickDelta>();
 
   const computedEfficiency = new Map<string, number>();
+  const productionRatesByNode = new Map<string, Record<string, number>>();
   const allocatedPowerByEdge = new Map<string, number>();
   const allocatedPowerByTarget = new Map<string, number>();
   const remainingPowerBySource = new Map<string, number>();
@@ -107,7 +117,7 @@ export function evaluateTick(
 
   for (const nodeId of sortedIds) {
     const node = nodes.get(nodeId)!;
-    const recipe = node.productionRecipe;
+    const recipe = getProductionRecipe(node);
 
     let rawEfficiency = 1.0;
     let stallTicks = node.stallTicksAccumulated;
@@ -191,47 +201,75 @@ export function evaluateTick(
     });
   }
 
-  for (const edge of resourceEdges.values()) {
-    const sourceNode = nodes.get(edge.sourceNodeId);
-    if (!sourceNode) continue;
-
-    const sourceEfficiency = computedEfficiency.get(edge.sourceNodeId) ?? 0;
-    const recipe = sourceNode.productionRecipe;
-
-    let baseOutputRate: number;
-
+  for (const sourceNodeId of sortedIds) {
+    const sourceNode = nodes.get(sourceNodeId)!;
+    const sourceEdges = outgoingEdges.get(sourceNode.id) ?? [];
+    const recipe = getProductionRecipe(sourceNode);
+    const materialIds = new Set(sourceEdges.map((edge) => edge.materialId));
+    for (const output of recipe?.outputs ?? []) {
+      materialIds.add(output.materialId);
+    }
     if (sourceNode.type === 'HARVESTER' && !recipe) {
-      baseOutputRate = HARVESTER_DEFAULT_OUTPUT_RATE;
-    } else if (recipe) {
-      const outputSpec = recipe.outputs.find(
-        (o) => o.materialId === edge.materialId
-      );
+      materialIds.add('void_ore');
+    }
+    const sourceEfficiency = computedEfficiency.get(sourceNode.id) ?? 0;
 
-      if (outputSpec) {
-        if (outputSpec.stochastic) {
-          baseOutputRate = boxMullerTransform(
+    for (const materialId of materialIds) {
+      let availableRate = 0;
+
+      if (isTransportJunction(sourceNode)) {
+        availableRate = (incomingEdges.get(sourceNode.id) ?? [])
+          .filter((edge) => edge.materialId === materialId)
+          .reduce((sum, edge) => sum + edge.currentFlowRate, 0);
+      } else if (sourceNode.type === 'STORAGE') {
+        const storedAmount = Math.max(0, sourceNode.inputBuffers[materialId]?.current ?? 0);
+        const incomingRate = (incomingEdges.get(sourceNode.id) ?? [])
+          .filter((edge) => edge.materialId === materialId)
+          .reduce((sum, edge) => sum + (edgeDeltas.get(edge.id)?.actualFlowRate ?? edge.currentFlowRate), 0);
+        availableRate = storedAmount + incomingRate;
+      } else if (sourceNode.type === 'HARVESTER' && !recipe) {
+        availableRate = materialId === 'void_ore' ? getHarvesterOutputRate(sourceNode, materialId) : 0;
+      } else if (recipe) {
+        const outputSpec = recipe.outputs.find((output) => output.materialId === materialId);
+        if (outputSpec?.stochastic) {
+          availableRate = boxMullerTransform(
             outputSpec.stochastic.baseMean,
             outputSpec.stochastic.standardDeviation
           );
-        } else {
-          baseOutputRate = outputSpec.ratePerSecond;
+        } else if (outputSpec) {
+          availableRate = sourceNode.type === 'HARVESTER'
+            ? getHarvesterOutputRate(sourceNode, materialId)
+            : outputSpec.ratePerSecond;
         }
-      } else {
-        baseOutputRate = 0;
       }
-    } else {
-      baseOutputRate = 0;
+
+      availableRate *= sourceEfficiency;
+      const productionRate = availableRate;
+      if (sourceNode.type === 'HARVESTER') {
+        availableRate = Math.max(
+          availableRate,
+          Math.max(0, sourceNode.outputBuffers[materialId]?.current ?? 0)
+        );
+      }
+      if ((recipe || sourceNode.type === 'HARVESTER') && availableRate > 0) {
+        const nodeProductionRates = productionRatesByNode.get(sourceNode.id) ?? {};
+        nodeProductionRates[materialId] = (nodeProductionRates[materialId] ?? 0) + productionRate;
+        productionRatesByNode.set(sourceNode.id, nodeProductionRates);
+      }
+
+      const matchingEdges = sourceEdges.filter((candidate) => candidate.materialId === materialId);
+      const ratePerEdge = matchingEdges.length > 0 ? availableRate / matchingEdges.length : 0;
+      for (const edge of matchingEdges) {
+        const actualFlowRate = Math.min(edge.maxCapacityRate, ratePerEdge);
+        edgeDeltas.set(edge.id, { edgeId: edge.id, actualFlowRate });
+      }
     }
 
-    const actualFlowRate = Math.min(
-      edge.maxCapacityRate,
-      sourceEfficiency * baseOutputRate
-    );
-
-    edgeDeltas.set(edge.id, {
-      edgeId: edge.id,
-      actualFlowRate,
-    });
+    for (const edge of sourceEdges) {
+      if (!edgeDeltas.has(edge.id)) {
+        edgeDeltas.set(edge.id, { edgeId: edge.id, actualFlowRate: 0 });
+      }
+    }
   }
 
   for (const edge of powerEdges) {
@@ -245,6 +283,7 @@ export function evaluateTick(
     timestamp: Date.now(),
     nodeDeltas,
     edgeDeltas,
+    productionRatesByNode,
     globalEnergyBalance: {
       production: totalPowerProduction,
       consumption: totalPowerConsumption,

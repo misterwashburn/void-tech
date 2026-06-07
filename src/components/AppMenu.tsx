@@ -23,7 +23,7 @@ interface AppMenuProps {
   compact?: boolean;
 }
 
-type MenuRoute = '/' | '/guide' | '/main-menu' | '/stats';
+type MenuRoute = '/' | '/game' | '/guide' | '/stats';
 
 const MENU_ITEMS: Array<{ label: string; description: string; route: MenuRoute }> = [
   {
@@ -34,7 +34,7 @@ const MENU_ITEMS: Array<{ label: string; description: string; route: MenuRoute }
   {
     label: 'Main Menu',
     description: 'Return to the Void-Tech start screen.',
-    route: '/main-menu',
+    route: '/',
   },
   {
     label: 'Stats',
@@ -120,7 +120,7 @@ export default function AppMenu({ compact = false }: AppMenuProps) {
 
   function navigate(route: MenuRoute) {
     closeMenu();
-    router.push(route);
+    router.replace(route);
   }
 
   const spin = spinValue.interpolate({
@@ -169,7 +169,7 @@ export default function AppMenu({ compact = false }: AppMenuProps) {
               ))}
             </View>
 
-            <TouchableOpacity activeOpacity={0.76} onPress={() => navigate('/')} style={styles.returnButton}>
+            <TouchableOpacity activeOpacity={0.76} onPress={() => navigate('/game')} style={styles.returnButton}>
               <Text style={styles.returnButtonText}>Return to Factory</Text>
             </TouchableOpacity>
           </Animated.View>

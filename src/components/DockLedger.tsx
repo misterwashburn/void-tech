@@ -16,16 +16,27 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFactoryStore } from '../store/useFactoryStore';
 import { useUIStore } from '../store/useUIStore';
-import { FactoryEdge, FactoryNode, NodeType, PowerEdge, ResourceEdge } from '../types';
+import { placementDragShared } from '../store/placementDragShared';
+import { FactoryEdge, FactoryNode, NodeType, PowerEdge, Recipe, ResourceEdge } from '../types';
 import { MATERIALS } from '../data/materials';
-import { MISSIONS, getCurrentMission } from '../data/missions';
+import { MISSIONS, getCurrentMission, getMissionStepStatuses } from '../data/missions';
 import { VOID_TYPES, getVoidTypeForTier } from '../data/progression';
+import { getNodeCode, getNodeDisplayName, getNodeFootprintSize } from '../data/nodes';
+import { EXTRACTABLE_MATERIAL_IDS, RECIPES, RECIPE_IDS_BY_NODE_TYPE, createExtractionRecipe } from '../data/recipes';
+import { getHarvesterOutputRate, getHarvesterTierDefinition } from '../data/harvesters';
+import {
+  getStorageItemCount,
+  getStorageUsedStackCount,
+  STORAGE_ITEM_CAPACITY,
+  STORAGE_STACK_CAPACITY,
+  STORAGE_STACK_SIZE,
+} from '../data/storage';
 
-type BuildCategoryId = 'POWER' | 'VOID_HARVESTING' | 'MANUFACTURING' | 'REFINING' | 'TRANSPORTING' | 'COMMUNICATIONS';
+type BuildCategoryId = 'POWER' | 'EXTRACTION' | 'MANUFACTURING' | 'RESOLVING' | 'TRANSPORTING' | 'STORAGE' | 'COMMUNICATIONS' | 'OTHER';
 
 type BuildMenuItem =
   | { kind: 'NODE'; nodeType: NodeType }
-  | { kind: 'METHOD'; id: string; code: string; name: string; description: string; isUnlocked: boolean };
+  | { kind: 'METHOD'; id: string; code: string; name: string; isUnlocked: boolean };
 
 const BUILD_CATEGORIES: Array<{ id: BuildCategoryId; label: string; description: string; nodeTypes: NodeType[] }> = [
   {
@@ -35,8 +46,8 @@ const BUILD_CATEGORIES: Array<{ id: BuildCategoryId; label: string; description:
     nodeTypes: ['POWER_GENERATOR'],
   },
   {
-    id: 'VOID_HARVESTING',
-    label: 'Void Harvesting',
+    id: 'EXTRACTION',
+    label: 'Extraction',
     description: 'Extract raw void materials from the grid.',
     nodeTypes: ['HARVESTER'],
   },
@@ -47,22 +58,34 @@ const BUILD_CATEGORIES: Array<{ id: BuildCategoryId; label: string; description:
     nodeTypes: ['ASSEMBLER', 'FEEDBACK_REGULATOR'],
   },
   {
-    id: 'REFINING',
-    label: 'Refining',
+    id: 'RESOLVING',
+    label: 'Resolving',
     description: 'Convert raw outputs into processed materials.',
     nodeTypes: ['REFINER'],
   },
   {
     id: 'TRANSPORTING',
     label: 'Transporting',
-    description: 'Conveyance endpoints and material routing support.',
-    nodeTypes: ['STORAGE', 'SINK'],
+    description: 'Route, merge, and split moving material lines.',
+    nodeTypes: ['MERGE_UNIT', 'SPLIT_UNIT'],
+  },
+  {
+    id: 'STORAGE',
+    label: 'Storage',
+    description: 'Hold material buffers for later routing.',
+    nodeTypes: ['STORAGE'],
   },
   {
     id: 'COMMUNICATIONS',
     label: 'Comms',
     description: 'Relay tier discoveries back to Earth to authorize new void work.',
     nodeTypes: ['RELAY'],
+  },
+  {
+    id: 'OTHER',
+    label: 'Other',
+    description: 'Utility endpoints and support structures.',
+    nodeTypes: ['SINK'],
   },
 ];
 
@@ -73,35 +96,6 @@ type PerfSample = {
   power: number;
   throughput: number;
 };
-
-function getNodeCode(type: NodeType): string {
-  switch (type) {
-    case 'POWER_GENERATOR': return 'PWR';
-    case 'HARVESTER': return 'HAR';
-    case 'REFINER': return 'REF';
-    case 'ASSEMBLER': return 'ASM';
-    case 'STORAGE': return 'STO';
-    case 'SINK': return 'SNK';
-    case 'RELAY': return 'RLY';
-    case 'FEEDBACK_REGULATOR': return 'FBK';
-    default: return '???';
-  }
-}
-
-
-function getNodeDisplayName(type: NodeType): string {
-  switch (type) {
-    case 'POWER_GENERATOR': return 'Generator';
-    case 'HARVESTER': return 'Void Harvester';
-    case 'REFINER': return 'Refiner';
-    case 'ASSEMBLER': return 'Assembler';
-    case 'STORAGE': return 'Storage';
-    case 'SINK': return 'Output Sink';
-    case 'RELAY': return 'Relay';
-    case 'FEEDBACK_REGULATOR': return 'Feedback Regulator';
-    default: return type;
-  }
-}
 
 function getStatusColor(status: FactoryNode['operationalStatus']): string {
   switch (status) {
@@ -202,22 +196,28 @@ export default function DockLedger() {
   const nodes = useFactoryStore((s) => s.nodes);
   const edges = useFactoryStore((s) => s.edges);
   const deleteNode = useFactoryStore((s) => s.deleteNode);
+  const setNodeRecipe = useFactoryStore((s) => s.setNodeRecipe);
   const producedTotals = useFactoryStore((s) => s.producedTotals);
   const completedMissionIds = useFactoryStore((s) => s.completedMissionIds);
   const getUnlockedNodeTypes = useFactoryStore((s) => s.getUnlockedNodeTypes);
+  const getUnlockedMaterialIds = useFactoryStore((s) => s.getUnlockedMaterialIds);
+  const getUnlockedRecipeIds = useFactoryStore((s) => s.getUnlockedRecipeIds);
   const placementNodeType = useUIStore((s) => s.placementNodeType);
   const activeTab = useUIStore((s) => s.activeTab);
+  const isDockRaised = useUIStore((s) => s.isDockRaised);
   const selectedNodeId = useUIStore((s) => s.selectedNodeId);
   const setPlacementNodeType = useUIStore((s) => s.setPlacementNodeType);
   const requestPlacementDrop = useUIStore((s) => s.requestPlacementDrop);
   const setSelectedNodeId = useUIStore((s) => s.setSelectedNodeId);
   const setConnectingFromId = useUIStore((s) => s.setConnectingFromId);
-  const setActiveTab = useUIStore((s) => s.setActiveTab);
+  const toggleActiveTab = useUIStore((s) => s.toggleActiveTab);
 
   const nodeList = Object.values(nodes);
   const edgeList = Object.values(edges);
   const selectedNode = selectedNodeId ? nodes[selectedNodeId] : undefined;
   const unlockedNodeTypes = getUnlockedNodeTypes();
+  const unlockedMaterialIds = getUnlockedMaterialIds();
+  const unlockedRecipeIds = getUnlockedRecipeIds();
   const currentMission = getCurrentMission(completedMissionIds);
   const completedMissions = MISSIONS.filter((mission) => completedMissionIds.includes(mission.id));
   const [activeBuildCategoryId, setActiveBuildCategoryId] = useState<BuildCategoryId>('POWER');
@@ -230,11 +230,12 @@ export default function DockLedger() {
         id: 'power_line',
         code: 'LINE',
         name: 'Power Line',
-        description: 'Draw from a generator to a machine to choose Power.',
         isUnlocked: unlockedNodeTypes.includes('POWER_GENERATOR'),
       }]
       : []),
   ];
+  const dockBottomPadding = Math.max(insets.bottom, isDockRaised ? 8 : 10);
+  const dockSidePadding = Math.max(insets.left, insets.right, 4);
 
   const renderStatusPanel = () => (
     <MachineStatusPanel
@@ -246,6 +247,9 @@ export default function DockLedger() {
         deleteNode(nodeId);
         setSelectedNodeId(null);
       }}
+      onSelectRecipe={setNodeRecipe}
+      unlockedMaterialIds={unlockedMaterialIds}
+      unlockedRecipeIds={unlockedRecipeIds}
     />
   );
 
@@ -260,6 +264,17 @@ export default function DockLedger() {
       );
     }
 
+    if (currentMission.id === 'mission_into_the_void') {
+      return (
+        <View style={styles.emptyStatusPanel}>
+          <Text style={styles.emptyStatusTitle}>Onboarding active</Text>
+          <Text style={styles.emptyStatusCopy}>
+            Complete Into the Void in the onboarding overlay. Standard missions begin after the station recovers its first Void Ore.
+          </Text>
+        </View>
+      );
+    }
+
     const materialName = MATERIALS[currentMission.requirement.materialId]?.name ?? currentMission.requirement.materialId;
     const tierVoidType = getVoidTypeForTier(currentMission.tier);
     const discoveredVoidType = currentMission.discoversVoidTypeId
@@ -268,6 +283,8 @@ export default function DockLedger() {
     const currentAmount = producedTotals[currentMission.requirement.materialId] ?? 0;
     const targetAmount = currentMission.requirement.quantity;
     const progressPct = Math.min(100, Math.round((currentAmount / targetAmount) * 100));
+    const stepStatuses = getMissionStepStatuses(currentMission, { nodes, edges, producedTotals });
+    const activeStepStatus = stepStatuses.find((status) => !status.isComplete);
 
     return (
       <ScrollView style={styles.missionsScroll} contentContainerStyle={styles.missionsContent}>
@@ -278,6 +295,33 @@ export default function DockLedger() {
             <Text style={styles.missionPercent}>{progressPct}%</Text>
           </View>
           <Text style={styles.missionObjective}>{currentMission.objective}</Text>
+          {activeStepStatus && (
+            <View style={styles.activeStepCard}>
+              <Text style={styles.activeStepLabel}>Next Step</Text>
+              <Text style={styles.activeStepTitle}>{activeStepStatus.step.title}</Text>
+              <Text style={styles.activeStepInstruction}>{activeStepStatus.step.instruction}</Text>
+              <Text style={styles.missionLore}>{activeStepStatus.step.narrative}</Text>
+            </View>
+          )}
+          {stepStatuses.length > 0 && (
+            <View style={styles.stepList}>
+              {stepStatuses.map((status, index) => (
+                <View key={status.step.id} style={styles.stepRow}>
+                  <Text style={[styles.stepIndex, status.isComplete && styles.stepIndexComplete]}>
+                    {status.isComplete ? '✓' : index + 1}
+                  </Text>
+                  <View style={styles.stepTextBlock}>
+                    <Text style={[styles.stepTitle, status.isComplete && styles.stepTitleComplete]}>
+                      {status.step.title}
+                    </Text>
+                    <Text style={styles.stepProgress}>
+                      {formatQuantity(status.current)} / {formatQuantity(status.target)}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
           {tierVoidType && (
             <Text style={styles.missionLore}>
               T{currentMission.tier} {tierVoidType.baseType}: {tierVoidType.name} — {tierVoidType.discoverySummary}
@@ -303,11 +347,20 @@ export default function DockLedger() {
   };
 
   return (
-    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+    <View
+      style={[
+        styles.container,
+        {
+          paddingBottom: dockBottomPadding,
+          paddingLeft: dockSidePadding,
+          paddingRight: dockSidePadding,
+        },
+      ]}
+    >
       <View style={styles.tabBar}>
         <TouchableOpacity
           style={[styles.tabButton, activeTab === 'PALETTE' && styles.tabButtonActive]}
-          onPress={() => setActiveTab('PALETTE')}
+          onPress={() => toggleActiveTab('PALETTE')}
         >
           <Text style={[styles.tabButtonText, activeTab === 'PALETTE' && styles.tabButtonTextActive]}>
             Build
@@ -315,7 +368,7 @@ export default function DockLedger() {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tabButton, activeTab === 'LEDGER' && styles.tabButtonActive]}
-          onPress={() => setActiveTab('LEDGER')}
+          onPress={() => toggleActiveTab('LEDGER')}
         >
           <Text style={[styles.tabButtonText, activeTab === 'LEDGER' && styles.tabButtonTextActive]}>
             Status
@@ -323,17 +376,25 @@ export default function DockLedger() {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tabButton, activeTab === 'MISSIONS' && styles.tabButtonActive]}
-          onPress={() => setActiveTab('MISSIONS')}
+          onPress={() => toggleActiveTab('MISSIONS')}
         >
           <Text style={[styles.tabButtonText, activeTab === 'MISSIONS' && styles.tabButtonTextActive]}>
             Missions
           </Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'VIEW' && styles.tabButtonActive]}
+          onPress={() => toggleActiveTab('VIEW')}
+        >
+          <Text style={[styles.tabButtonText, activeTab === 'VIEW' && styles.tabButtonTextActive]}>
+            View
+          </Text>
+        </TouchableOpacity>
       </View>
 
-      {activeTab === 'PALETTE' && (
+      {isDockRaised && activeTab === 'PALETTE' && (
         <View style={styles.buildPanel}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll} contentContainerStyle={styles.categoryContent}>
+          <View style={styles.categoryGrid}>
             {BUILD_CATEGORIES.map((category) => {
               const isActive = category.id === activeBuildCategoryId;
               return (
@@ -346,11 +407,11 @@ export default function DockLedger() {
                 </TouchableOpacity>
               );
             })}
-          </ScrollView>
+          </View>
 
           <Text style={styles.categoryDescription}>{activeBuildCategory.description}</Text>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.paletteScroll} contentContainerStyle={styles.paletteContent}>
+          <View style={styles.paletteGrid}>
             {buildMenuItems.map((item) => {
               if (item.kind === 'METHOD') {
                 return (
@@ -358,9 +419,8 @@ export default function DockLedger() {
                     key={item.id}
                     style={[styles.paletteButton, !item.isUnlocked && styles.paletteButtonLocked]}
                   >
-                    <Text style={[styles.paletteCode, !item.isUnlocked && styles.lockedText]}>{item.code}</Text>
-                    <Text style={[styles.paletteName, !item.isUnlocked && styles.lockedText]}>{item.name}</Text>
-                    <Text style={styles.paletteHint}>{item.description}</Text>
+                    <PowerLineIcon isLocked={!item.isUnlocked} />
+                    <Text style={[styles.structurePaletteName, !item.isUnlocked && styles.lockedText]}>{item.name}</Text>
                     {!item.isUnlocked && <Text style={styles.lockedLabel}>LOCKED</Text>}
                   </View>
                 );
@@ -386,13 +446,13 @@ export default function DockLedger() {
             >
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
-          </ScrollView>
+          </View>
         </View>
       )}
 
-      {activeTab === 'LEDGER' && renderStatusPanel()}
+      {isDockRaised && activeTab === 'LEDGER' && renderStatusPanel()}
 
-      {activeTab === 'MISSIONS' && renderMissionPanel()}
+      {isDockRaised && activeTab === 'MISSIONS' && renderMissionPanel()}
     </View>
   );
 }
@@ -414,9 +474,11 @@ function DraggablePaletteNode({
   const dragX = useSharedValue(0);
   const dragY = useSharedValue(0);
   const isDragging = useSharedValue(false);
+  const didDrop = useSharedValue(false);
+  const footprintSize = getNodeFootprintSize(type);
 
   const dragStyle = useAnimatedStyle(() => ({
-    opacity: isDragging.value ? 0.85 : 1,
+    opacity: isDragging.value ? 0 : 1,
     transform: [
       { translateX: dragX.value },
       { translateY: dragY.value },
@@ -426,23 +488,48 @@ function DraggablePaletteNode({
 
   const dragGesture = Gesture.Pan()
     .enabled(isUnlocked)
-    .onBegin(() => {
+    .minDistance(6)
+    .onBegin((event) => {
       isDragging.value = true;
+      didDrop.value = false;
+      placementDragShared.isActive.value = true;
+      placementDragShared.size.value = footprintSize;
+      placementDragShared.absoluteX.value = event.absoluteX;
+      placementDragShared.absoluteY.value = event.absoluteY;
       runOnJS(onSelect)(type);
     })
     .onUpdate((event) => {
       dragX.value = event.translationX;
       dragY.value = event.translationY;
+      placementDragShared.absoluteX.value = event.absoluteX;
+      placementDragShared.absoluteY.value = event.absoluteY;
     })
-    .onFinalize((event) => {
+    .onEnd(() => {
+      didDrop.value = true;
+      placementDragShared.isActive.value = false;
+      runOnJS(onDrop)(type, placementDragShared.absoluteX.value, placementDragShared.absoluteY.value);
+    })
+    .onFinalize(() => {
+      if (!didDrop.value && placementDragShared.isActive.value) {
+        runOnJS(onDrop)(type, placementDragShared.absoluteX.value, placementDragShared.absoluteY.value);
+      }
+      didDrop.value = false;
       isDragging.value = false;
+      placementDragShared.isActive.value = false;
       dragX.value = withTiming(0, { duration: 120 });
       dragY.value = withTiming(0, { duration: 120 });
-      runOnJS(onDrop)(type, event.absoluteX, event.absoluteY);
     });
 
+  const tapGesture = Gesture.Tap()
+    .enabled(isUnlocked)
+    .onEnd(() => {
+      runOnJS(onSelect)(isSelected ? null : type);
+    });
+
+  const paletteGesture = Gesture.Exclusive(dragGesture, tapGesture);
+
   return (
-    <GestureDetector gesture={dragGesture}>
+    <GestureDetector gesture={paletteGesture}>
       <Animated.View
         style={[
           styles.paletteButton,
@@ -451,15 +538,194 @@ function DraggablePaletteNode({
           dragStyle,
         ]}
       >
-        <TouchableOpacity disabled={!isUnlocked} activeOpacity={0.85} onPress={() => onSelect(type)}>
-          <Text style={[styles.paletteCode, !isUnlocked && styles.lockedText]}>{getNodeCode(type)}</Text>
-          <Text style={[styles.paletteName, !isUnlocked && styles.lockedText]}>{getNodeDisplayName(type)}</Text>
-          <Text style={styles.paletteHint}>Drag onto the play area to place anywhere.</Text>
+        <View style={styles.structurePaletteContent}>
+          <StructureIcon type={type} isLocked={!isUnlocked} />
+          <Text style={[styles.structurePaletteName, !isUnlocked && styles.lockedText]} numberOfLines={2}>
+            {getNodeDisplayName(type)}
+          </Text>
           {!isUnlocked && <Text style={styles.lockedLabel}>LOCKED</Text>}
-        </TouchableOpacity>
+        </View>
       </Animated.View>
     </GestureDetector>
   );
+}
+
+function PowerLineIcon({ isLocked }: { isLocked: boolean }) {
+  const accentColor = isLocked ? '#607D8B' : '#00BCD4';
+  const accent = { backgroundColor: accentColor };
+  const accentBorder = { borderColor: accentColor };
+
+  return (
+    <View style={styles.structureIcon}>
+      <View style={[styles.structureIconGround, accent]} />
+      <View style={[styles.iconPowerLineCableLeft, accentBorder]} />
+      <View style={[styles.iconPowerLineCableMiddle, accentBorder]} />
+      <View style={[styles.iconPowerLineCableRight, accentBorder]} />
+      <View style={[styles.iconPowerPoleLeft, accent]} />
+      <View style={[styles.iconPowerPoleRight, accent]} />
+      <View style={[styles.iconPowerPoleCrossbarLeft, accent]} />
+      <View style={[styles.iconPowerPoleCrossbarRight, accent]} />
+      <View style={[styles.iconPowerPoleInsulatorLeft, accent]} />
+      <View style={[styles.iconPowerPoleInsulatorRight, accent]} />
+    </View>
+  );
+}
+
+function StructureIcon({ type, isLocked }: { type: NodeType; isLocked: boolean }) {
+  const accentColor = isLocked ? '#607D8B' : '#00BCD4';
+  const accent = { backgroundColor: accentColor };
+  const accentBorder = { borderColor: accentColor };
+
+  const icon = (() => {
+    switch (type) {
+      case 'POWER_GENERATOR':
+        return (
+          <>
+            <View style={[styles.iconGeneratorTower, accentBorder]} />
+            <View style={[styles.iconGeneratorCore, accentBorder]} />
+            <View style={[styles.iconGeneratorSparkLeft, accent]} />
+            <View style={[styles.iconGeneratorSparkRight, accent]} />
+          </>
+        );
+      case 'HARVESTER':
+        return (
+          <>
+            <View style={[styles.iconHarvesterCab, accentBorder]} />
+            <View style={[styles.iconHarvesterBeam, accent]} />
+            <View style={[styles.iconHarvesterFootLeft, accent]} />
+            <View style={[styles.iconHarvesterFootRight, accent]} />
+            <View style={[styles.iconHarvesterDrill, accentBorder]} />
+          </>
+        );
+      case 'REFINER':
+        return (
+          <>
+            <View style={[styles.iconRefinerTankLeft, accentBorder]} />
+            <View style={[styles.iconRefinerTankRight, accentBorder]} />
+            <View style={[styles.iconRefinerPipe, accent]} />
+            <View style={[styles.iconRefinerGauge, accent]} />
+          </>
+        );
+      case 'ASSEMBLER':
+        return (
+          <>
+            <View style={[styles.iconAssemblerBody, accentBorder]} />
+            <View style={[styles.iconAssemblerArmLeft, accent]} />
+            <View style={[styles.iconAssemblerArmRight, accent]} />
+            <View style={[styles.iconAssemblerCore, accentBorder]} />
+          </>
+        );
+      case 'STORAGE':
+        return (
+          <>
+            <View style={[styles.iconStorageTop, accentBorder]} />
+            <View style={[styles.iconStorageMiddle, accentBorder]} />
+            <View style={[styles.iconStorageBottom, accentBorder]} />
+          </>
+        );
+      case 'SINK':
+        return (
+          <>
+            <View style={[styles.iconSinkMouth, accentBorder]} />
+            <View style={[styles.iconSinkNeck, accent]} />
+            <View style={[styles.iconSinkBase, accentBorder]} />
+          </>
+        );
+      case 'RELAY':
+        return (
+          <>
+            <View style={[styles.iconRelayMast, accent]} />
+            <View style={[styles.iconRelayDish, accentBorder]} />
+            <View style={[styles.iconRelaySignalOuter, accentBorder]} />
+            <View style={[styles.iconRelaySignalInner, accentBorder]} />
+            <View style={[styles.iconRelayBase, accentBorder]} />
+          </>
+        );
+      case 'FEEDBACK_REGULATOR':
+        return (
+          <>
+            <View style={[styles.iconRegulatorRing, accentBorder]} />
+            <View style={[styles.iconRegulatorCore, accent]} />
+            <View style={[styles.iconRegulatorPortLeft, accentBorder]} />
+            <View style={[styles.iconRegulatorPortRight, accentBorder]} />
+          </>
+        );
+      case 'MERGE_UNIT':
+        return (
+          <>
+            <View style={[styles.iconRouteInputTop, accent]} />
+            <View style={[styles.iconRouteInputBottom, accent]} />
+            <View style={[styles.iconRouteMergeTop, accent]} />
+            <View style={[styles.iconRouteMergeBottom, accent]} />
+            <View style={[styles.iconRouteOutput, accent]} />
+            <View style={[styles.iconRouteCore, accentBorder]} />
+          </>
+        );
+      case 'SPLIT_UNIT':
+        return (
+          <>
+            <View style={[styles.iconRouteInput, accent]} />
+            <View style={[styles.iconRouteSplitTop, accent]} />
+            <View style={[styles.iconRouteSplitBottom, accent]} />
+            <View style={[styles.iconRouteOutputTop, accent]} />
+            <View style={[styles.iconRouteOutputBottom, accent]} />
+            <View style={[styles.iconRouteCore, accentBorder]} />
+          </>
+        );
+    }
+  })();
+
+  return (
+    <View style={[styles.structureIcon, accentBorder]}>
+      <View style={[styles.structureIconGround, accent]} />
+      {icon}
+    </View>
+  );
+}
+
+type StatusRecipeOption = {
+  id: string;
+  label: string;
+  materialId: string;
+  ratePerSecond: number;
+  recipe: Recipe;
+};
+
+function getStatusRecipeOptions(
+  node: FactoryNode,
+  unlockedMaterialIds: string[],
+  unlockedRecipeIds: string[]
+): StatusRecipeOption[] {
+  if (node.type === 'HARVESTER') {
+    return EXTRACTABLE_MATERIAL_IDS
+      .filter((materialId) => unlockedMaterialIds.includes(materialId))
+      .map((materialId) => {
+        const recipe = createExtractionRecipe(materialId);
+        const output = recipe.outputs[0];
+        return {
+          id: `extract_${materialId}`,
+          label: MATERIALS[materialId]?.name ?? materialId.replace(/_/g, ' '),
+          materialId,
+          ratePerSecond: getHarvesterOutputRate(node, materialId),
+          recipe,
+        };
+      });
+  }
+
+  const recipeIdsForNode = RECIPE_IDS_BY_NODE_TYPE[node.type as NonNullable<Recipe['nodeType']>] ?? [];
+  return recipeIdsForNode
+    .filter((recipeId) => unlockedRecipeIds.includes(recipeId))
+    .map((recipeId) => {
+      const recipe = RECIPES[recipeId];
+      const output = recipe.outputs[0];
+      return {
+        id: recipeId,
+        label: MATERIALS[output.materialId]?.name ?? output.materialId.replace(/_/g, ' '),
+        materialId: output.materialId,
+        ratePerSecond: output.ratePerSecond,
+        recipe,
+      };
+    });
 }
 
 function MachineStatusPanel({
@@ -468,12 +734,18 @@ function MachineStatusPanel({
   edges,
   onConnect,
   onDelete,
+  onSelectRecipe,
+  unlockedMaterialIds,
+  unlockedRecipeIds,
 }: {
   node?: FactoryNode;
   nodeCount: number;
   edges: FactoryEdge[];
   onConnect: (nodeId: string) => void;
   onDelete: (nodeId: string) => void;
+  onSelectRecipe: (nodeId: string, recipe?: Recipe) => void;
+  unlockedMaterialIds: string[];
+  unlockedRecipeIds: string[];
 }) {
   const [history, setHistory] = useState<PerfSample[]>([]);
 
@@ -525,7 +797,23 @@ function MachineStatusPanel({
   const powerHistory = history.map((sample) => sample.power);
   const throughputHistory = history.map((sample) => sample.throughput);
   const recipeOutput = node.productionRecipe?.outputs[0];
-  const recipeName = recipeOutput ? MATERIALS[recipeOutput.materialId]?.name ?? recipeOutput.materialId : 'No recipe';
+  const legacyHarvesterMaterialId = node.type === 'HARVESTER' && !recipeOutput ? 'void_ore' : undefined;
+  const activeRecipeMaterialId = recipeOutput?.materialId ?? legacyHarvesterMaterialId;
+  const recipeName = activeRecipeMaterialId ? MATERIALS[activeRecipeMaterialId]?.name ?? activeRecipeMaterialId : 'No recipe';
+  const recipeOptions = getStatusRecipeOptions(node, unlockedMaterialIds, unlockedRecipeIds);
+  const harvesterDefinition = node.type === 'HARVESTER' ? getHarvesterTierDefinition(node.harvesterTier) : undefined;
+  const activeBuffer = activeRecipeMaterialId ? node.outputBuffers[activeRecipeMaterialId] : undefined;
+  const fallbackBufferEntry = Object.entries(node.outputBuffers)[0];
+  const bufferMaterialId = activeRecipeMaterialId ?? fallbackBufferEntry?.[0];
+  const buffer = activeBuffer ?? fallbackBufferEntry?.[1];
+  const bufferMaterialName = bufferMaterialId ? MATERIALS[bufferMaterialId]?.name ?? bufferMaterialId.replace(/_/g, ' ') : 'Empty';
+  const storageInventory = node.type === 'STORAGE'
+    ? Object.entries(node.inputBuffers)
+      .filter(([, itemBuffer]) => itemBuffer.current > 0)
+      .sort(([left], [right]) => left.localeCompare(right))
+    : [];
+  const storageItemCount = node.type === 'STORAGE' ? getStorageItemCount(node) : 0;
+  const storageUsedStacks = node.type === 'STORAGE' ? getStorageUsedStackCount(node) : 0;
 
   return (
     <ScrollView style={styles.statusScroll} contentContainerStyle={styles.statusContent}>
@@ -571,10 +859,77 @@ function MachineStatusPanel({
         </View>
       </View>
 
-      <View style={styles.detailRow}>
-        <Text style={styles.detailLabel}>Recipe</Text>
-        <Text style={styles.detailValue}>{recipeName}</Text>
-      </View>
+      {node.type === 'STORAGE' ? (
+        <View style={styles.detailRow}>
+          <Text style={styles.detailLabel}>Function</Text>
+          <Text style={styles.detailValue}>Passive connection storage</Text>
+        </View>
+      ) : (
+        <View style={styles.detailRow}>
+          <Text style={styles.detailLabel}>Recipe</Text>
+          <Text style={styles.detailValue}>{recipeName}</Text>
+        </View>
+      )}
+      {node.type === 'STORAGE' && (
+        <View style={styles.inventoryCard}>
+          <View style={styles.inventoryHeader}>
+            <Text style={styles.sectionLabel}>Inventory</Text>
+            <Text style={styles.inventoryCapacity}>
+              {storageUsedStacks} / {STORAGE_STACK_CAPACITY} stacks · {formatQuantity(storageItemCount)} / {STORAGE_ITEM_CAPACITY}
+            </Text>
+          </View>
+          {storageInventory.length === 0 ? (
+            <Text style={styles.inventoryEmpty}>No items received.</Text>
+          ) : (
+            storageInventory.map(([materialId, itemBuffer]) => (
+              <View key={materialId} style={styles.inventoryRow}>
+                <Text style={styles.inventoryMaterial}>
+                  {MATERIALS[materialId]?.name ?? materialId.replace(/_/g, ' ')}
+                </Text>
+                <Text style={styles.inventoryQuantity}>
+                  {formatQuantity(itemBuffer.current)} · {Math.ceil(itemBuffer.current / STORAGE_STACK_SIZE)} stack{Math.ceil(itemBuffer.current / STORAGE_STACK_SIZE) === 1 ? '' : 's'}
+                </Text>
+              </View>
+            ))
+          )}
+        </View>
+      )}
+      {harvesterDefinition && (
+        <>
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Variant</Text>
+            <Text style={styles.detailValue}>T{harvesterDefinition.tier} {harvesterDefinition.name}</Text>
+          </View>
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>Internal Inventory</Text>
+            <Text style={styles.detailValue}>
+              {formatQuantity(buffer?.current ?? 0)} / {formatQuantity(buffer?.max ?? harvesterDefinition.internalInventoryCapacity)} {bufferMaterialName}
+            </Text>
+          </View>
+        </>
+      )}
+      {recipeOptions.length > 0 && (
+        <View style={styles.recipeSelector}>
+          <Text style={styles.recipeSelectorLabel}>Select Recipe</Text>
+          <View style={styles.recipeOptionGrid}>
+            {recipeOptions.map((option) => {
+              const isActive = option.materialId === activeRecipeMaterialId;
+              return (
+                <TouchableOpacity
+                  key={option.id}
+                  style={[styles.recipeOptionButton, isActive && styles.recipeOptionButtonActive]}
+                  onPress={() => onSelectRecipe(node.id, option.recipe)}
+                >
+                  <Text style={[styles.recipeOptionText, isActive && styles.recipeOptionTextActive]} numberOfLines={1}>
+                    {option.label}
+                  </Text>
+                  <Text style={styles.recipeOptionMeta}>{formatQuantity(option.ratePerSecond)}/s</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      )}
       <View style={styles.detailRow}>
         <Text style={styles.detailLabel}>Power Capacity</Text>
         <Text style={styles.detailValue}>
@@ -661,6 +1016,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   tabButton: {
+    alignItems: 'center',
+    flex: 1,
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 20,
@@ -680,20 +1037,25 @@ const styles = StyleSheet.create({
   },
   buildPanel: {
     flex: 1,
+    paddingHorizontal: 10,
+    paddingTop: 4,
   },
-  categoryScroll: {
-    maxHeight: 36,
-  },
-  categoryContent: {
+  categoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 6,
-    paddingHorizontal: 12,
     paddingVertical: 4,
   },
   categoryButton: {
+    alignItems: 'center',
     borderColor: '#334155',
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1,
-    paddingHorizontal: 12,
+    flexBasis: '23.5%',
+    flexGrow: 1,
+    justifyContent: 'center',
+    minHeight: 27,
+    paddingHorizontal: 5,
     paddingVertical: 5,
   },
   categoryButtonActive: {
@@ -702,8 +1064,9 @@ const styles = StyleSheet.create({
   },
   categoryButtonText: {
     color: '#8B9DC3',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
+    textAlign: 'center',
   },
   categoryButtonTextActive: {
     color: '#FFFFFF',
@@ -711,18 +1074,17 @@ const styles = StyleSheet.create({
   categoryDescription: {
     color: '#8B9DC3',
     fontSize: 10,
-    paddingHorizontal: 14,
+    minHeight: 22,
+    paddingHorizontal: 4,
     paddingVertical: 2,
   },
-  paletteScroll: {
+  paletteGrid: {
+    alignContent: 'flex-start',
     flex: 1,
-  },
-  paletteContent: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    flexWrap: 'wrap',
     gap: 8,
+    paddingVertical: 4,
   },
   paletteButton: {
     alignItems: 'center',
@@ -733,7 +1095,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#1C2733',
     backgroundColor: '#0D1117',
-    minWidth: 70,
+    flexBasis: '31%',
+    flexGrow: 1,
+    minHeight: 92,
+    minWidth: 0,
   },
   paletteButtonSelected: {
     borderColor: '#00BCD4',
@@ -752,15 +1117,482 @@ const styles = StyleSheet.create({
     color: '#8B9DC3',
     fontSize: 9,
     marginTop: 2,
+    textAlign: 'center',
+  },
+  structurePaletteContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  structurePaletteName: {
+    color: '#C7D2E2',
+    fontSize: 9,
+    fontWeight: '700',
+    lineHeight: 11,
+    marginTop: 4,
+    minHeight: 22,
+    textAlign: 'center',
+  },
+  structureIcon: {
+    height: 48,
+    position: 'relative',
+    width: 64,
+  },
+  structureIconGround: {
+    borderRadius: 2,
+    bottom: 2,
+    height: 2,
+    left: 7,
+    opacity: 0.55,
+    position: 'absolute',
+    width: 50,
+  },
+  iconPowerLineCableLeft: {
+    borderBottomWidth: 2,
+    borderRadius: 12,
+    height: 12,
+    left: 14,
+    position: 'absolute',
+    top: 8,
+    transform: [{ rotate: '8deg' }],
+    width: 18,
+  },
+  iconPowerLineCableMiddle: {
+    borderBottomWidth: 2,
+    borderRadius: 16,
+    height: 17,
+    left: 23,
+    position: 'absolute',
+    top: 7,
+    width: 18,
+  },
+  iconPowerLineCableRight: {
+    borderBottomWidth: 2,
+    borderRadius: 12,
+    height: 12,
+    position: 'absolute',
+    right: 14,
+    top: 8,
+    transform: [{ rotate: '-8deg' }],
+    width: 18,
+  },
+  iconPowerPoleLeft: {
+    bottom: 4,
+    height: 34,
+    left: 15,
+    position: 'absolute',
+    width: 3,
+  },
+  iconPowerPoleRight: {
+    bottom: 4,
+    height: 34,
+    position: 'absolute',
+    right: 15,
+    width: 3,
+  },
+  iconPowerPoleCrossbarLeft: {
+    height: 3,
+    left: 9,
+    position: 'absolute',
+    top: 10,
+    width: 15,
+  },
+  iconPowerPoleCrossbarRight: {
+    height: 3,
+    position: 'absolute',
+    right: 9,
+    top: 10,
+    width: 15,
+  },
+  iconPowerPoleInsulatorLeft: {
+    borderRadius: 2,
+    height: 5,
+    left: 10,
+    position: 'absolute',
+    top: 7,
+    width: 3,
+  },
+  iconPowerPoleInsulatorRight: {
+    borderRadius: 2,
+    height: 5,
+    position: 'absolute',
+    right: 10,
+    top: 7,
+    width: 3,
+  },
+  iconGeneratorTower: {
+    borderRadius: 4,
+    borderWidth: 2,
+    bottom: 5,
+    height: 31,
+    left: 21,
+    position: 'absolute',
+    width: 22,
+  },
+  iconGeneratorCore: {
+    backgroundColor: '#0D1117',
+    borderRadius: 9,
+    borderWidth: 2,
+    bottom: 13,
+    height: 18,
+    left: 23,
+    position: 'absolute',
+    width: 18,
+  },
+  iconGeneratorSparkLeft: {
+    height: 9,
+    left: 15,
+    position: 'absolute',
+    top: 3,
+    transform: [{ rotate: '-35deg' }],
+    width: 2,
+  },
+  iconGeneratorSparkRight: {
+    height: 9,
+    position: 'absolute',
+    right: 15,
+    top: 3,
+    transform: [{ rotate: '35deg' }],
+    width: 2,
+  },
+  iconHarvesterCab: {
+    borderRadius: 5,
+    borderWidth: 2,
+    height: 18,
+    left: 17,
+    position: 'absolute',
+    top: 8,
+    width: 30,
+  },
+  iconHarvesterBeam: {
+    height: 12,
+    left: 30,
+    position: 'absolute',
+    top: 25,
+    width: 4,
+  },
+  iconHarvesterFootLeft: {
+    bottom: 5,
+    height: 13,
+    left: 19,
+    position: 'absolute',
+    transform: [{ rotate: '24deg' }],
+    width: 3,
+  },
+  iconHarvesterFootRight: {
+    bottom: 5,
+    height: 13,
+    position: 'absolute',
+    right: 19,
+    transform: [{ rotate: '-24deg' }],
+    width: 3,
+  },
+  iconHarvesterDrill: {
+    borderRadius: 2,
+    borderWidth: 2,
+    bottom: 4,
+    height: 8,
+    left: 27,
+    position: 'absolute',
+    transform: [{ rotate: '45deg' }],
+    width: 8,
+  },
+  iconRefinerTankLeft: {
+    borderRadius: 9,
+    borderWidth: 2,
+    bottom: 5,
+    height: 34,
+    left: 13,
+    position: 'absolute',
+    width: 18,
+  },
+  iconRefinerTankRight: {
+    borderRadius: 9,
+    borderWidth: 2,
+    bottom: 5,
+    height: 27,
+    position: 'absolute',
+    right: 13,
+    width: 18,
+  },
+  iconRefinerPipe: {
+    height: 3,
+    left: 30,
+    position: 'absolute',
+    top: 20,
+    width: 5,
+  },
+  iconRefinerGauge: {
+    borderRadius: 3,
+    height: 6,
+    left: 19,
+    position: 'absolute',
+    top: 14,
+    width: 6,
+  },
+  iconAssemblerBody: {
+    borderRadius: 5,
+    borderWidth: 2,
+    bottom: 5,
+    height: 28,
+    left: 18,
+    position: 'absolute',
+    width: 28,
+  },
+  iconAssemblerArmLeft: {
+    height: 4,
+    left: 9,
+    position: 'absolute',
+    top: 17,
+    transform: [{ rotate: '-25deg' }],
+    width: 14,
+  },
+  iconAssemblerArmRight: {
+    height: 4,
+    position: 'absolute',
+    right: 9,
+    top: 17,
+    transform: [{ rotate: '25deg' }],
+    width: 14,
+  },
+  iconAssemblerCore: {
+    borderRadius: 4,
+    borderWidth: 2,
+    height: 9,
+    left: 27,
+    position: 'absolute',
+    top: 24,
+    transform: [{ rotate: '45deg' }],
+    width: 9,
+  },
+  iconStorageTop: {
+    borderRadius: 5,
+    borderWidth: 2,
+    height: 11,
+    left: 18,
+    position: 'absolute',
+    top: 7,
+    width: 28,
+  },
+  iconStorageMiddle: {
+    borderRadius: 5,
+    borderWidth: 2,
+    height: 11,
+    left: 15,
+    position: 'absolute',
+    top: 19,
+    width: 34,
+  },
+  iconStorageBottom: {
+    borderRadius: 5,
+    borderWidth: 2,
+    bottom: 5,
+    height: 11,
+    left: 12,
+    position: 'absolute',
+    width: 40,
+  },
+  iconSinkMouth: {
+    borderRadius: 4,
+    borderWidth: 2,
+    height: 17,
+    left: 12,
+    position: 'absolute',
+    top: 7,
+    width: 40,
+  },
+  iconSinkNeck: {
+    height: 13,
+    left: 29,
+    position: 'absolute',
+    top: 23,
+    width: 6,
+  },
+  iconSinkBase: {
+    borderRadius: 4,
+    borderWidth: 2,
+    bottom: 5,
+    height: 10,
+    left: 21,
+    position: 'absolute',
+    width: 22,
+  },
+  iconRelayMast: {
+    bottom: 5,
+    height: 29,
+    left: 31,
+    position: 'absolute',
+    width: 2,
+  },
+  iconRelayDish: {
+    borderBottomWidth: 2,
+    borderLeftWidth: 2,
+    borderRadius: 10,
+    height: 16,
+    left: 19,
+    position: 'absolute',
+    top: 8,
+    transform: [{ rotate: '-35deg' }],
+    width: 16,
+  },
+  iconRelaySignalOuter: {
+    borderRadius: 12,
+    borderRightWidth: 2,
+    borderTopWidth: 2,
+    height: 22,
+    position: 'absolute',
+    right: 12,
+    top: 2,
+    transform: [{ rotate: '45deg' }],
+    width: 22,
+  },
+  iconRelaySignalInner: {
+    borderRadius: 8,
+    borderRightWidth: 2,
+    borderTopWidth: 2,
+    height: 13,
+    position: 'absolute',
+    right: 18,
+    top: 8,
+    transform: [{ rotate: '45deg' }],
+    width: 13,
+  },
+  iconRelayBase: {
+    borderRadius: 3,
+    borderWidth: 2,
+    bottom: 5,
+    height: 8,
+    left: 22,
+    position: 'absolute',
+    width: 20,
+  },
+  iconRegulatorRing: {
+    borderRadius: 17,
+    borderWidth: 3,
+    height: 34,
+    left: 15,
+    position: 'absolute',
+    top: 6,
+    width: 34,
+  },
+  iconRegulatorCore: {
+    borderRadius: 6,
+    height: 12,
+    left: 26,
+    position: 'absolute',
+    top: 17,
+    transform: [{ rotate: '45deg' }],
+    width: 12,
+  },
+  iconRegulatorPortLeft: {
+    borderRadius: 3,
+    borderWidth: 2,
+    height: 10,
+    left: 8,
+    position: 'absolute',
+    top: 18,
+    width: 9,
+  },
+  iconRegulatorPortRight: {
+    borderRadius: 3,
+    borderWidth: 2,
+    height: 10,
+    position: 'absolute',
+    right: 8,
+    top: 18,
+    width: 9,
+  },
+  iconRouteCore: {
+    borderRadius: 5,
+    borderWidth: 2,
+    height: 14,
+    left: 25,
+    position: 'absolute',
+    top: 17,
+    transform: [{ rotate: '45deg' }],
+    width: 14,
+  },
+  iconRouteInputTop: {
+    height: 3,
+    left: 7,
+    position: 'absolute',
+    top: 11,
+    width: 15,
+  },
+  iconRouteInputBottom: {
+    bottom: 11,
+    height: 3,
+    left: 7,
+    position: 'absolute',
+    width: 15,
+  },
+  iconRouteMergeTop: {
+    height: 3,
+    left: 18,
+    position: 'absolute',
+    top: 15,
+    transform: [{ rotate: '35deg' }],
+    width: 13,
+  },
+  iconRouteMergeBottom: {
+    bottom: 15,
+    height: 3,
+    left: 18,
+    position: 'absolute',
+    transform: [{ rotate: '-35deg' }],
+    width: 13,
+  },
+  iconRouteOutput: {
+    height: 3,
+    position: 'absolute',
+    right: 7,
+    top: 23,
+    width: 18,
+  },
+  iconRouteInput: {
+    height: 3,
+    left: 7,
+    position: 'absolute',
+    top: 23,
+    width: 18,
+  },
+  iconRouteSplitTop: {
+    height: 3,
+    position: 'absolute',
+    right: 18,
+    top: 15,
+    transform: [{ rotate: '-35deg' }],
+    width: 13,
+  },
+  iconRouteSplitBottom: {
+    bottom: 15,
+    height: 3,
+    position: 'absolute',
+    right: 18,
+    transform: [{ rotate: '35deg' }],
+    width: 13,
+  },
+  iconRouteOutputTop: {
+    height: 3,
+    position: 'absolute',
+    right: 7,
+    top: 11,
+    width: 15,
+  },
+  iconRouteOutputBottom: {
+    bottom: 11,
+    height: 3,
+    position: 'absolute',
+    right: 7,
+    width: 15,
   },
   lockedText: {
     color: '#607D8B',
   },
   paletteHint: {
     color: '#8B9DC3',
-    fontSize: 9,
+    fontSize: 8,
     marginTop: 3,
-    maxWidth: 120,
+    maxWidth: 130,
     textAlign: 'center',
   },
   lockedLabel: {
@@ -777,7 +1609,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
-    minWidth: 60,
+    flexBasis: '31%',
+    flexGrow: 1,
+    minHeight: 92,
+    minWidth: 0,
   },
   cancelButtonText: {
     color: '#F44336',
@@ -955,6 +1790,92 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     textAlign: 'right',
   },
+  inventoryCard: {
+    backgroundColor: '#0D1117',
+    borderColor: '#1C2733',
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: 8,
+  },
+  inventoryHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  inventoryCapacity: {
+    color: '#00BCD4',
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  inventoryEmpty: {
+    color: '#607D8B',
+    fontSize: 10,
+    marginTop: 8,
+  },
+  inventoryRow: {
+    alignItems: 'center',
+    borderTopColor: '#1C2733',
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 7,
+    paddingTop: 7,
+  },
+  inventoryMaterial: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  inventoryQuantity: {
+    color: '#8B9DC3',
+    fontSize: 10,
+  },
+  recipeSelector: {
+    backgroundColor: '#0D1117',
+    borderColor: '#1C2733',
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: 8,
+  },
+  recipeSelectorLabel: {
+    color: '#607D8B',
+    fontSize: 9,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  recipeOptionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 7,
+  },
+  recipeOptionButton: {
+    borderColor: '#334155',
+    borderRadius: 7,
+    borderWidth: 1,
+    flexBasis: '31%',
+    flexGrow: 1,
+    minWidth: 0,
+    paddingHorizontal: 7,
+    paddingVertical: 6,
+  },
+  recipeOptionButtonActive: {
+    backgroundColor: '#12303A',
+    borderColor: '#00BCD4',
+  },
+  recipeOptionText: {
+    color: '#C8D4E0',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  recipeOptionTextActive: {
+    color: '#FFFFFF',
+  },
+  recipeOptionMeta: {
+    color: '#00BCD4',
+    fontSize: 9,
+    marginTop: 2,
+  },
   boosterSlot: {
     alignItems: 'center',
     backgroundColor: '#0D1117',
@@ -1071,6 +1992,74 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 15,
     marginTop: 5,
+  },
+  activeStepCard: {
+    backgroundColor: '#0D1117',
+    borderColor: '#00BCD4',
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: 10,
+    padding: 10,
+  },
+  activeStepLabel: {
+    color: '#00BCD4',
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  activeStepTitle: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  activeStepInstruction: {
+    color: '#D0D7DE',
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 4,
+  },
+  stepList: {
+    gap: 6,
+    marginTop: 10,
+  },
+  stepRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  stepIndex: {
+    borderColor: '#334155',
+    borderRadius: 12,
+    borderWidth: 1,
+    color: '#8B9DC3',
+    fontSize: 11,
+    fontWeight: '700',
+    height: 24,
+    lineHeight: 22,
+    textAlign: 'center',
+    width: 24,
+  },
+  stepIndexComplete: {
+    backgroundColor: '#00BCD4',
+    borderColor: '#00BCD4',
+    color: '#0A0E14',
+  },
+  stepTextBlock: {
+    flex: 1,
+  },
+  stepTitle: {
+    color: '#D0D7DE',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  stepTitleComplete: {
+    color: '#8B9DC3',
+  },
+  stepProgress: {
+    color: '#607D8B',
+    fontSize: 10,
+    marginTop: 1,
   },
   missionLore: {
     color: '#90A4AE',

@@ -10,10 +10,12 @@ import { NodeType } from '../src/types';
 
 const STRUCTURES: Array<{ type: NodeType; name: string; role: string }> = [
   { type: 'POWER_GENERATOR', name: 'Power Generator', role: 'Produces station energy and feeds powered structures.' },
-  { type: 'HARVESTER', name: 'Harvester', role: 'Extracts baseline void resources from seams.' },
-  { type: 'REFINER', name: 'Refiner', role: 'Transforms raw inputs into stronger industrial materials.' },
+  { type: 'HARVESTER', name: 'Void Harvester', role: 'Extracts baseline void resources from the field.' },
+  { type: 'REFINER', name: 'Resolver', role: 'Transforms raw inputs into stronger industrial materials.' },
   { type: 'ASSEMBLER', name: 'Assembler', role: 'Combines multiple materials into advanced components.' },
   { type: 'STORAGE', name: 'Storage', role: 'Buffers materials so production spikes do not stall lines.' },
+  { type: 'MERGE_UNIT', name: 'Merge Unit', role: 'Combines matching transported material into one line.' },
+  { type: 'SPLIT_UNIT', name: 'Split Unit', role: 'Divides matching transported material across multiple lines.' },
   { type: 'SINK', name: 'Sink', role: 'Consumes delivered outputs and advances station objectives.' },
   { type: 'RELAY', name: 'Relay', role: 'Handles Earth communication and future progression systems.' },
   { type: 'FEEDBACK_REGULATOR', name: 'Feedback Regulator', role: 'Future high-tier stabilizer for volatile feedback loops.' },

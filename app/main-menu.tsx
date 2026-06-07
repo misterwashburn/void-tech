@@ -6,10 +6,12 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { AppIcon } from '../src/components/AppMenu';
+import { useFactoryStore } from '../src/store/useFactoryStore';
 import { useSettingsStore } from '../src/store/useSettingsStore';
+import { useUIStore } from '../src/store/useUIStore';
 
 const SECONDARY_ACTIONS = [
-  { label: 'New Game', eyebrow: 'Start on a new station', code: 'NEW', route: '/' as const },
+  { label: 'New Game', eyebrow: 'Start on a new station', code: 'NEW', action: 'new-game' as const },
   { label: 'Achievements', eyebrow: 'Review milestones', code: 'ACH', route: '/stats' as const },
   { label: 'Settings', eyebrow: 'Tune audio, video & haptics', code: 'CFG', route: 'settings' as const },
   { label: 'Account', eyebrow: 'Profile & sync', code: 'USR', route: null },
@@ -33,15 +35,39 @@ function clampSliderValue(value: number) {
 export default function MainMenuScreen() {
   const router = useRouter();
   const [isSettingsVisible, setSettingsVisible] = useState(false);
+  const nodes = useFactoryStore((s) => s.nodes);
+  const availableEnergy = useFactoryStore((s) => s.availableEnergy);
+  const completedMissionIds = useFactoryStore((s) => s.completedMissionIds);
+  const resetGame = useFactoryStore((s) => s.resetGame);
+  const setDockRaised = useUIStore((s) => s.setDockRaised);
+  const setActiveTab = useUIStore((s) => s.setActiveTab);
+  const nodeCount = Object.keys(nodes).length;
+  const hasSavedGame = nodeCount > 0 || completedMissionIds.length > 0;
+
+  function continueGame() {
+    router.replace('/game');
+  }
+
+  function handleNewGame() {
+    resetGame();
+    setDockRaised(false);
+    setActiveTab('VIEW');
+    router.replace('/game');
+  }
 
   function handleMenuPress(action: (typeof SECONDARY_ACTIONS)[number]) {
+    if ('action' in action && action.action === 'new-game') {
+      handleNewGame();
+      return;
+    }
+
     if (action.route === 'settings') {
       setSettingsVisible(true);
       return;
     }
 
     if (action.route) {
-      router.push(action.route);
+      router.replace(action.route);
     }
   }
 
@@ -71,7 +97,7 @@ export default function MainMenuScreen() {
 
           <Pressable
             accessibilityRole="button"
-            onPress={() => router.push('/')}
+            onPress={continueGame}
             style={({ pressed }) => [styles.continueCard, pressed && styles.continueCardPressed]}
           >
             <View style={styles.continueHeader}>
@@ -87,13 +113,18 @@ export default function MainMenuScreen() {
             <View style={styles.cardDivider} />
 
             <View style={styles.stationMeta}>
-              <Text style={styles.metaText}>SECTOR ALPHA · 14 NODES</Text>
-              <Text style={styles.energyText}>⚡ 128.4 GJ</Text>
+              <Text style={styles.metaText}>
+                {hasSavedGame ? `SECTOR ALPHA · ${nodeCount} NODES` : 'NO ACTIVE STATION'}
+              </Text>
+              <Text style={styles.energyText}>⚡ {availableEnergy.toFixed(1)} MW</Text>
             </View>
             <View style={styles.badgeRow}>
-              <Text style={[styles.badge, styles.operationalBadge]}>OPERATIONAL</Text>
-              <Text style={[styles.badge, styles.starvedBadge]}>STARVED</Text>
-              <Text style={styles.nominalText}>+12 nominal</Text>
+              <Text style={[styles.badge, hasSavedGame ? styles.operationalBadge : styles.starvedBadge]}>
+                {hasSavedGame ? 'SAVED' : 'EMPTY'}
+              </Text>
+              <Text style={styles.nominalText}>
+                {completedMissionIds.length} missions complete
+              </Text>
             </View>
           </Pressable>
 

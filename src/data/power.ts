@@ -103,6 +103,8 @@ const BASE_POWER_REQUIREMENTS: Record<NodeType, number> = {
   ASSEMBLER: 32,
   STORAGE: 2,
   SINK: 1,
+  MERGE_UNIT: 1,
+  SPLIT_UNIT: 1,
   RELAY: 12,
   FEEDBACK_REGULATOR: 45,
 };

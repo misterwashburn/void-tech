@@ -1,5 +1,23 @@
 import { Recipe } from '../types';
 
+export const EXTRACTABLE_MATERIAL_IDS = [
+  'void_ore',
+  'hydrocarbon',
+  'catalyst',
+  'plasma',
+  'raw_exotic',
+  'probability_ore',
+] as const;
+
+export function createExtractionRecipe(materialId: string): Recipe {
+  return {
+    nodeType: 'HARVESTER',
+    inputs: [],
+    outputs: [{ materialId, ratePerSecond: 10 }],
+    energyCost: 8,
+  };
+}
+
 export const RECIPES: Record<string, Recipe> = {
   // Tier 1
   smelt_plasteel: {
